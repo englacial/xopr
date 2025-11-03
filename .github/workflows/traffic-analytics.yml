@@ -20,6 +20,9 @@ on:
 jobs:
   collect-traffic:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -80,7 +83,7 @@ jobs:
 
       - name: Fetch clone statistics
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           DATE=$(date +%Y-%m-%d)
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -105,7 +108,7 @@ jobs:
 
       - name: Fetch pageview statistics
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           DATE=$(date +%Y-%m-%d)
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -130,7 +133,7 @@ jobs:
 
       - name: Fetch popular paths
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           DATE=$(date +%Y-%m-%d)
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -154,7 +157,7 @@ jobs:
 
       - name: Fetch referrers
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           DATE=$(date +%Y-%m-%d)
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
