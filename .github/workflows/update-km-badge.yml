@@ -133,7 +133,7 @@ jobs:
         # Push the branch
         git push -u origin "$BRANCH_NAME"
 
-        # Create PR that will auto-merge
+        # Create PR (manual merge required)
         gh pr create \
           --title "Flight line coverage increased from: ${TOTAL_OLD} km → ${TOTAL_NEW} km" \
           --body "Automated badge update from workflow.
@@ -146,7 +146,3 @@ jobs:
         🤖 Generated with GitHub Actions" \
           --base main \
           --head "$BRANCH_NAME"
-
-        # Enable auto-merge on the PR
-        PR_NUMBER=$(gh pr view "$BRANCH_NAME" --json number --jq '.number')
-        gh pr merge "$PR_NUMBER" --auto --squash
