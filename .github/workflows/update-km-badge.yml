@@ -133,20 +133,17 @@ jobs:
         # Push the branch
         git push -u origin "$BRANCH_NAME"
 
-        # Create PR body
-        PR_BODY="Automated badge update from workflow.
-
-**Flight distance changes:**
-- Arctic: ${ARCTIC_OLD} km → ${ARCTIC_NEW} km
-- Antarctic: ${ANTARCTIC_OLD} km → ${ANTARCTIC_NEW} km
-- Total: ${TOTAL_OLD} km → ${TOTAL_NEW} km
-
-🤖 Generated with GitHub Actions"
-
         # Create PR that will auto-merge
         gh pr create \
           --title "Flight line coverage increased from: ${TOTAL_OLD} km → ${TOTAL_NEW} km" \
-          --body "$PR_BODY" \
+          --body "Automated badge update from workflow.
+
+        **Flight distance changes:**
+        - Arctic: ${ARCTIC_OLD} km → ${ARCTIC_NEW} km
+        - Antarctic: ${ANTARCTIC_OLD} km → ${ANTARCTIC_NEW} km
+        - Total: ${TOTAL_OLD} km → ${TOTAL_NEW} km
+
+        🤖 Generated with GitHub Actions" \
           --base main \
           --head "$BRANCH_NAME"
 
