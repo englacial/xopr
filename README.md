@@ -6,13 +6,13 @@
 [![PyPI Version](https://img.shields.io/pypi/v/xopr.svg)](https://pypi.org/project/xopr/)
 [![License](https://img.shields.io/github/license/englacial/xopr.svg)](LICENSE)
 
-**Flight Coverage:** <!--ARCTIC_BADGE-->![Arctic](https://img.shields.io/badge/Arctic-612696%20km-00A4CC)<!--/ARCTIC_BADGE--> <!--ANTARCTIC_BADGE-->![Antarctic](https://img.shields.io/badge/Antarctic-396233%20km-FF6B35)<!--/ANTARCTIC_BADGE-->
+**Flight Coverage:** <!--ARCTIC_BADGE-->![Arctic](https://img.shields.io/badge/Arctic-612696%20km-00A4CC)<!--/ARCTIC_BADGE--> <!--ANTARCTIC_BADGE-->![Antarctic](https://img.shields.io/badge/Antarctic-406657%20km-FF6B35)<!--/ANTARCTIC_BADGE-->
 
 <!--TOTAL_BADGE-->
-![Total Data Ingest](https://progress-bar.xyz/28/?scale=100&title=Total%20Data%20Ingest&width=200&color=babaca&suffix=%25)
+![Total Data Ingest](https://progress-bar.xyz/29/?scale=100&title=Total%20Data%20Ingest&width=200&color=babaca&suffix=%25)
 <!--/TOTAL_BADGE-->
 
-*Data last updated: <!--LAST_UPDATED-->2025-10-01<!--/LAST_UPDATED-->*
+*Data last updated: <!--LAST_UPDATED-->2025-11-03<!--/LAST_UPDATED-->*
 
 **Try our code in binder:** [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/englacial/xopr/HEAD?urlpath=lab/tree/docs/notebooks)
 
@@ -36,5 +36,5 @@ This library was originally written by Thomas Teisberg and Shane Grigsby. It is 
 
 <!-- Hidden tracking values for GitHub Action -->
 <!--ARCTIC_VALUE-->612696<!--/ARCTIC_VALUE-->
-<!--ANTARCTIC_VALUE-->396233<!--/ANTARCTIC_VALUE-->
-<!--TOTAL_VALUE-->1008929<!--/TOTAL_VALUE-->
+<!--ANTARCTIC_VALUE-->406657<!--/ANTARCTIC_VALUE-->
+<!--TOTAL_VALUE-->1019353<!--/TOTAL_VALUE-->
