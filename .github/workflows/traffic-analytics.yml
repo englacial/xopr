@@ -44,22 +44,15 @@ jobs:
           curl -LO https://github.com/mozilla/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
           chmod +x sops-v3.8.1.linux.amd64
           sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
-          
+
           # Decrypt GCS credentials
           sops -d .github/encrypted/gcs-credentials.enc.json > /tmp/gcs-key.json
-          
-          # Set up authentication
+
+          # Set up authentication for both gcloud and gsutil
           echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcs-key.json" >> $GITHUB_ENV
 
       - name: Setup Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
-        with:
-          skip_install: false
-
-      - name: Authenticate to Google Cloud
-        run: |
-          gcloud auth activate-service-account --key-file=/tmp/gcs-key.json
-          # Project is already set in service account, no need to configure
 
       - name: Create temporary data directories
         run: |
