@@ -112,6 +112,12 @@ jobs:
       if: steps.check.outputs.needs_update == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        ARCTIC_OLD: ${{ steps.current.outputs.arctic }}
+        ARCTIC_NEW: ${{ steps.calc.outputs.arctic }}
+        ANTARCTIC_OLD: ${{ steps.current.outputs.antarctic }}
+        ANTARCTIC_NEW: ${{ steps.calc.outputs.antarctic }}
+        TOTAL_OLD: ${{ steps.current.outputs.total }}
+        TOTAL_NEW: ${{ steps.calc.outputs.total }}
       run: |
         git config --global user.name 'github-actions[bot]'
         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
@@ -122,25 +128,25 @@ jobs:
 
         # Commit changes
         git add README.md
-        git commit -m "Flight line coverage increased from: ${{ steps.current.outputs.total }} km → ${{ steps.calc.outputs.total }} km"
+        git commit -m "Flight line coverage increased from: ${TOTAL_OLD} km → ${TOTAL_NEW} km"
 
         # Push the branch
         git push -u origin "$BRANCH_NAME"
 
-        # Create PR that will auto-merge
-        gh pr create \
-          --title "Flight line coverage increased from: ${{ steps.current.outputs.total }} km → ${{ steps.calc.outputs.total }} km" \
-          --body "$(cat <<'EOF'
-Automated badge update from workflow.
+        # Create PR body
+        PR_BODY="Automated badge update from workflow.
 
 **Flight distance changes:**
-- Arctic: ${{ steps.current.outputs.arctic }} km → ${{ steps.calc.outputs.arctic }} km
-- Antarctic: ${{ steps.current.outputs.antarctic }} km → ${{ steps.calc.outputs.antarctic }} km
-- Total: ${{ steps.current.outputs.total }} km → ${{ steps.calc.outputs.total }} km
+- Arctic: ${ARCTIC_OLD} km → ${ARCTIC_NEW} km
+- Antarctic: ${ANTARCTIC_OLD} km → ${ANTARCTIC_NEW} km
+- Total: ${TOTAL_OLD} km → ${TOTAL_NEW} km
 
-🤖 Generated with GitHub Actions
-EOF
-)" \
+🤖 Generated with GitHub Actions"
+
+        # Create PR that will auto-merge
+        gh pr create \
+          --title "Flight line coverage increased from: ${TOTAL_OLD} km → ${TOTAL_NEW} km" \
+          --body "$PR_BODY" \
           --base main \
           --head "$BRANCH_NAME"
 
