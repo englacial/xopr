@@ -51,6 +51,10 @@ jobs:
       - name: Setup Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Authenticate gcloud with service account
+        run: |
+          gcloud auth activate-service-account --key-file=/tmp/gcs-key.json
+
       - name: Create temporary data directories
         run: |
           mkdir -p /tmp/traffic-data/raw

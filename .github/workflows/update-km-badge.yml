@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
     - uses: actions/checkout@v3
@@ -107,11 +108,42 @@ jobs:
         # Update last updated date - only updates when km values change
         sed -i "s|<!--LAST_UPDATED-->.*<!--/LAST_UPDATED-->|<!--LAST_UPDATED-->${CURRENT_DATE}<!--/LAST_UPDATED-->|g" README.md
     
-    - name: Commit and push if changed
+    - name: Create PR if changed
       if: steps.check.outputs.needs_update == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git config --global user.name 'github-actions[bot]'
         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+        # Create a unique branch name
+        BRANCH_NAME="update-flight-badges-$(date +%Y%m%d-%H%M%S)"
+        git checkout -b "$BRANCH_NAME"
+
+        # Commit changes
         git add README.md
-        git commit -m "Update flight distances: ${{ steps.current.outputs.total }} km → ${{ steps.calc.outputs.total }} km"
-        git push
+        git commit -m "Flight line coverage increased from: ${{ steps.current.outputs.total }} km → ${{ steps.calc.outputs.total }} km"
+
+        # Push the branch
+        git push -u origin "$BRANCH_NAME"
+
+        # Create PR that will auto-merge
+        gh pr create \
+          --title "Flight line coverage increased from: ${{ steps.current.outputs.total }} km → ${{ steps.calc.outputs.total }} km" \
+          --body "$(cat <<'EOF'
+Automated badge update from workflow.
+
+**Flight distance changes:**
+- Arctic: ${{ steps.current.outputs.arctic }} km → ${{ steps.calc.outputs.arctic }} km
+- Antarctic: ${{ steps.current.outputs.antarctic }} km → ${{ steps.calc.outputs.antarctic }} km
+- Total: ${{ steps.current.outputs.total }} km → ${{ steps.calc.outputs.total }} km
+
+🤖 Generated with GitHub Actions
+EOF
+)" \
+          --base main \
+          --head "$BRANCH_NAME"
+
+        # Enable auto-merge on the PR
+        PR_NUMBER=$(gh pr view "$BRANCH_NAME" --json number --jq '.number')
+        gh pr merge "$PR_NUMBER" --auto --squash
