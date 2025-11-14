@@ -16,7 +16,7 @@
 
 **Try our code in binder:** [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/englacial/xopr/HEAD?urlpath=lab/tree/docs/notebooks)
 
-**Documentation:** [![Jupyter Book Badge](https://jupyterbook.org/badge.svg)](https://docs.englacial.org/xopr/)
+**Documentation:** [![Jupyter Book Badge](https://img.shields.io/badge/jupyter-book-orange)](https://docs.englacial.org/xopr/)
 
 **Contributor Code of Conduct:** [![Code of Conduct](https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
