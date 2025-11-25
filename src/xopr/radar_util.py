@@ -17,7 +17,10 @@ def add_along_track(ds: xr.Dataset, projection: str = None) -> xr.Dataset:
     """
 
     if 'Latitude' not in ds or 'Longitude' not in ds:
-        raise ValueError("Dataset must contain 'Latitude' and 'Longitude' coordinates.")
+        if 'lat' in ds and 'lon' in ds:
+            ds = ds.rename({'lat': 'Latitude', 'lon': 'Longitude'})
+        else:
+            raise ValueError("Dataset must contain 'Latitude' and 'Longitude' or 'lat' and 'lon' coordinates.")
     
     # Project the dataset to the specified projection
     if projection is None:
