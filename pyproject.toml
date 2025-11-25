@@ -24,6 +24,7 @@ dependencies = [
     "dask[distributed]",
     "rustac>=0.6.0",
     "antimeridian>=0.4.3",
+    "hdf5storage"
 ]
 
 [project.optional-dependencies]
@@ -44,7 +45,8 @@ docs = [
     "jupyterlab",
     "hvplot",
     "jupyter_bokeh",
-    "rioxarray"
+    "rioxarray",
+    "verde"
     "pdoc>=14.0.0",
 ]
 test = [
