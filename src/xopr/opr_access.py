@@ -13,6 +13,7 @@ import shapely
 import h5py
 import antimeridian
 from rustac import DuckdbClient
+import hdf5storage
 
 from .cf_units import apply_cf_compliant_attrs
 from .matlab_attribute_utils import decode_hdf5_matlab_variable, extract_legacy_mat_attributes
@@ -42,18 +43,18 @@ class OPRConnection:
         self.fsspec_cache_kwargs = {}
         self.fsspec_url_prefix = ''
         if cache_dir:
-            self.fsspec_cache_kwargs = {
-                'cache_storage': cache_dir,
-                'check_files': True
-            }
+            self.fsspec_cache_kwargs['cache_storage'] = cache_dir
+            self.fsspec_cache_kwargs['check_files'] = True
             self.fsspec_url_prefix = 'filecache::'
+
+        self.db_layers_metadata = None # Cache for OPS database layers metadata
 
     def _open_file(self, url):
         """Helper method to open files with appropriate caching."""
         if self.fsspec_url_prefix:
             return fsspec.open_local(f"{self.fsspec_url_prefix}{url}", filecache=self.fsspec_cache_kwargs)
         else:
-            return fsspec.open_local(f"simplecache::{url}", **self.fsspec_cache_kwargs)
+            return fsspec.open_local(f"simplecache::{url}", simplecache=self.fsspec_cache_kwargs)
 
     def _extract_segment_info(self, segment):
         """Extract collection, segment_path, and frame from Dataset or dict."""
@@ -537,11 +538,13 @@ class OPRConnection:
     def get_layers_files(self, segment: Union[xr.Dataset, dict], raise_errors=True) -> dict:
         """
         Fetch layers from the CSARP_layers files
+
+        See https://gitlab.com/openpolarradar/opr/-/wikis/Layer-File-Guide for file formats
         
         Parameters
         ----------
         segment : Union[xr.Dataset, dict]
-            The flight information, which can be an xarray Dataset or a dictionary.
+            The flight information, which can be an xarray Dataset or a dictionary representing the STAC item.
         raise_errors : bool, optional
             If True, raise errors when layers cannot be found.
 
@@ -552,20 +555,24 @@ class OPRConnection:
         """
         collection, segment_path, frame = self._extract_segment_info(segment)
 
-        properties = {}
-        if frame:
-            properties['opr:frame'] = frame
+        # If we already have a STAC item, just use it. Otherwise, query to find the matching STAC items
+        if isinstance(segment, xr.Dataset):
+            properties = {}
+            if frame:
+                properties['opr:frame'] = frame
 
-        # Query STAC collection for CSARP_layer files matching this specific segment
+            # Query STAC collection for CSARP_layer files matching this specific segment
 
-        # Get items from this specific segment
-        stac_items = self.query_frames(collections=[collection], segment_paths=[segment_path], properties=properties)
+            # Get items from this specific segment
+            stac_items = self.query_frames(collections=[collection], segment_paths=[segment_path], properties=properties)
 
-        # Filter for items that have CSARP_layer assets
-        layer_items = []
-        for idx, item in stac_items.iterrows():
-            if 'CSARP_layer' in item['assets']:
-                layer_items.append(item)
+            # Filter for items that have CSARP_layer assets
+            layer_items = []
+            for idx, item in stac_items.iterrows():
+                if 'CSARP_layer' in item['assets']:
+                    layer_items.append(item)
+        else:
+            layer_items = [segment] if 'CSARP_layer' in segment.get('assets', {}) else []
         
         if not layer_items:
             if raise_errors:
@@ -583,6 +590,7 @@ class OPRConnection:
                     layer_ds = self.load_layers_file(url)
                     layer_frames.append(layer_ds)
                 except Exception as e:
+                    raise e # TODO
                     print(f"Warning: Failed to load layer file {url}: {e}")
                     continue
         
@@ -593,35 +601,37 @@ class OPRConnection:
                 return {}
         
         # Concatenate all layer frames along slow_time dimension
-        layers_segment = xr.concat(layer_frames, dim='slow_time', combine_attrs='drop_conflicts', data_vars='all')
+        layers_segment = xr.concat(layer_frames, dim='slow_time', combine_attrs='drop_conflicts', data_vars='minimal')
         layers_segment = layers_segment.sortby('slow_time')
 
         # Trim to bounds of the original dataset
         layers_segment = self._trim_to_bounds(layers_segment, segment)
 
+        # Find the layer organization file to map layer IDs to names
+        # Layer organization files are one per directory. For example, the layer file:
+        # https://data.cresis.ku.edu/data/rds/2017_Antarctica_BaslerJKB/CSARP_layer/20180105_03/Data_20180105_03_003.mat
+        # would have a layer organization file at:
+        # https://data.cresis.ku.edu/data/rds/2017_Antarctica_BaslerJKB/CSARP_layer/20180105_03/layer_20180105_03.mat
+
+        layer_organization_file_url = re.sub(r'Data_(\d{8}_\d{2})_\d{3}.mat', r'layer_\1.mat', url)
+        layer_organization_ds = self._load_layer_organization(self._open_file(layer_organization_file_url))
+
         # Split into separate layers by ID
         layers = {}
 
-        layer_ids = np.unique(layers_segment['id'])
+        layer_ids = np.unique(layers_segment['layer'])
 
         for i, layer_id in enumerate(layer_ids):
             layer_id_int = int(layer_id)
+            layer_name = str(layer_organization_ds['lyr_name'].sel(lyr_id=layer_id_int).values.item().squeeze())
+            layer_group = str(layer_organization_ds['lyr_group_name'].sel(lyr_id=layer_id_int).values.item().squeeze())
+            if layer_group == '[]':
+                layer_group = ''
+            layer_display_name = f"{layer_group}:{layer_name}"
             layer_data = {}
 
-            for var_name, var_data in layers_segment.data_vars.items():
-                if 'layer' in var_data.dims:
-                    # Select the i-th layer from 2D variables (layer, slow_time)
-                    layer_data[var_name] = (['slow_time'], var_data.isel(layer=i).values)
-                else:
-                    # 1D variables that don't have layer dimension
-                    layer_data[var_name] = var_data
-            
-            # Create coordinates (excluding layer coordinate)
-            coords = {k: v for k, v in layers_segment.coords.items() if k != 'layer'}
-            
-            # Create the layer dataset
-            layer_ds = xr.Dataset(layer_data, coords=coords)
-            layers[layer_id_int] = layer_ds
+            layer_ds = layers_segment.sel(layer=layer_id)
+            layers[layer_display_name] = layer_ds
         
         return layers
 
@@ -665,10 +675,7 @@ class OPRConnection:
 
         file = self._open_file(url)
 
-        try:
-            ds = self._load_layers_hdf5(file)
-        except OSError:
-            ds = self._load_layers_matlab(file)
+        ds = self._load_layers(file)
 
         # Add the source URL as an attribute
         ds.attrs['source_url'] = url
@@ -693,6 +700,53 @@ class OPRConnection:
 
         return ds
     
+    def _load_layers(self, file) -> xr.Dataset:
+        """
+        Load layer data file using hdf5storage
+        
+        Parameters:
+        file : str
+            Path to the layer file
+        Returns: xr.Dataset
+        """
+
+        d = hdf5storage.loadmat(file, appendmat=False)
+
+        # Ensure 'id' is at least 1D for the layer dimension
+        id_data = np.atleast_1d(d['id'].squeeze())
+
+        # For 2D arrays with (layer, slow_time) dimensions, ensure they remain 2D
+        # even when there's only one layer
+        quality_data = np.atleast_2d(d['quality'].squeeze())
+        if quality_data.shape[0] == 1 or quality_data.ndim == 1:
+            quality_data = quality_data.reshape(len(id_data), -1)
+
+        twtt_data = np.atleast_2d(d['twtt'].squeeze())
+        if twtt_data.shape[0] == 1 or twtt_data.ndim == 1:
+            twtt_data = twtt_data.reshape(len(id_data), -1)
+
+        type_data = np.atleast_2d(d['type'].squeeze())
+        if type_data.shape[0] == 1 or type_data.ndim == 1:
+            type_data = type_data.reshape(len(id_data), -1)
+
+        ds = xr.Dataset({
+            'file_type': ((), d['file_type'].squeeze()),
+            'file_version': ((), d['file_version'].squeeze()),
+            'elev': (('slow_time',), d['elev'].squeeze()),
+            #'gps_source': ((), d['gps_source'].squeeze()),
+            'gps_time': (('slow_time',), d['gps_time'].squeeze()),
+            'id': (('layer',), id_data),
+            'lat': (('slow_time',), d['lat'].squeeze()),
+            'lon': (('slow_time',), d['lon'].squeeze()),
+            'quality': (('layer', 'slow_time'), quality_data),
+            'twtt': (('layer', 'slow_time'), twtt_data),
+            'type': (('layer', 'slow_time'), type_data),
+        })
+
+        ds = ds.assign_coords({'layer': ds['id'], 'slow_time': ds['gps_time']})
+
+        return ds
+
     def _load_layers_hdf5(self, file) -> xr.Dataset:
         """
         Load layer data from an HDF5 format file.
@@ -817,6 +871,37 @@ class OPRConnection:
         ds = xr.Dataset(data_vars, coords=coords)
         
         return ds
+    
+    def _load_layer_organization(self, file) -> xr.Dataset:
+        """
+        Load a layer organization file
+        
+        Parameters
+        ----------
+        file : str
+            Path to the HDF5 layer organization file
+            
+        Returns
+        -------
+        xr.Dataset
+            Raw layer data from HDF5 file
+        """
+        d = hdf5storage.loadmat(file, appendmat=False)
+        ds = xr.Dataset({
+            'file_type': ((), d['file_type'].squeeze()),
+            'file_version': ((), d['file_version'].squeeze()),
+            'lyr_age': (('lyr_id',), np.atleast_1d(d['lyr_age'].squeeze())),
+            'lyr_age_source': (('lyr_id',), np.atleast_1d(d['lyr_age_source'].squeeze())),
+            'lyr_desc': (('lyr_id',), np.atleast_1d(d['lyr_desc'].squeeze())),
+            'lyr_group_name': (('lyr_id',), np.atleast_1d(d['lyr_group_name'].squeeze())),
+            'lyr_id': (('lyr_id',), np.atleast_1d(d['lyr_id'].squeeze())),
+            'lyr_name': (('lyr_id',), np.atleast_1d(d['lyr_name'].squeeze())),
+            'lyr_order': (('lyr_id',), np.atleast_1d(d['lyr_order'].squeeze())),
+            }, attrs={'param': d['param']})
+        
+        ds = ds.set_index(lyr_id='lyr_id')
+
+        return ds
 
     def get_layers_db(self, flight: Union[xr.Dataset, dict], include_geometry=True, raise_errors=True) -> dict:
         """
@@ -865,8 +950,20 @@ class OPRConnection:
         layer_ids = set(layer_ds_raw['lyr_id'].to_numpy())
         layer_ids = [int(layer_id) for layer_id in layer_ids if not np.isnan(layer_id)]
 
+        # Get the mapping of layer IDs to names
+        if self.db_layers_metadata is None:
+            layer_metadata = ops_api.get_layer_metadata()
+            if layer_metadata['status'] == 1:
+                df = pd.DataFrame(layer_metadata['data'])
+                df['display_name'] = df['lyr_group_name'] + ":" + df['lyr_name']
+                self.db_layers_metadata = df
+            else:
+                raise ValueError("Failed to fetch layer metadata from OPS API.")
+
         layers = {}
         for layer_id in layer_ids:
+            layer_name = self.db_layers_metadata.loc[self.db_layers_metadata['lyr_id'] == layer_id, 'display_name'].values[0]
+
             l = layer_ds_raw.where(layer_ds_raw['lyr_id'] == layer_id, drop=True)
 
             l = l.sortby('gps_time')
@@ -879,7 +976,7 @@ class OPRConnection:
             # Filter to the same time range as flight
             l = self._trim_to_bounds(l, flight)
 
-            layers[layer_id] = l
+            layers[layer_name] = l
 
         return layers
 

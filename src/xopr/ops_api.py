@@ -66,6 +66,17 @@ def get_layer_points(segment_name : str, season_name : str, location=None, layer
 
     return _ops_api_request(f"/get/layer/points", data_payload, request_type='POST')
 
+def get_layer_metadata():
+    """
+    Get the mapping of layer IDs to groups and names from the OPS API.
+
+    Returns
+    -------
+    dict or None
+        API response as JSON containing layer metadata, or None if request fails.
+    """
+
+    return _ops_api_request(f"/get/layers", {}, request_type='POST')
 
 def get_segment_metadata(segment_name : str, season_name : str):
     """
