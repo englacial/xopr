@@ -28,6 +28,7 @@ project:
         - file: notebooks/search_and_scaling.ipynb
         - file: notebooks/reading_params.ipynb
         - file: notebooks/crossovers.ipynb
+        - file: notebooks/bed_picks.ipynb
     
 site:
   template: book-theme
