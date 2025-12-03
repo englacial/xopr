@@ -20,6 +20,7 @@ project:
     - file: index.md
     - file: design.md
     - file: map.md
+    - file: bedmap.md
     - title: Notebooks
       children:
         - file: notebooks/demo_notebook.ipynb
