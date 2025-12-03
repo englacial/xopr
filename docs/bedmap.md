@@ -21,7 +21,7 @@ Bedmap is a compilation of Antarctic ice thickness data from multiple institutio
 :height: 600px
 :pole: south
 :dataPath: https://storage.googleapis.com/opr_stac/bedmap
-:fileGroups: [{"files": ["bedmap1.parquet"], "color": "red"}, {"files": ["bedmap2.parquet"], "color": "orange"}, {"files": ["bedmap3.parquet"], "color": "navy"}]
+:fileGroups: [{"files": ["bedmap2.parquet"], "color": "orange"}]
 :defaultZoom: 3
 :::
 
