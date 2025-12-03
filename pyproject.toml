@@ -24,7 +24,9 @@ dependencies = [
     "dask[distributed]",
     "rustac>=0.6.0",
     "antimeridian>=0.4.3",
-    "hdf5storage"
+    "hdf5storage",
+    "duckdb>=1.0.0",
+    "haversine>=2.8.0",
 ]
 
 [project.optional-dependencies]
