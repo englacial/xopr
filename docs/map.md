@@ -22,8 +22,6 @@ Below are Antarctic and Arctic maps showing radar data availability. These maps 
 :defaultZoom: 3
 :::
 
-*Note, the 2018 UTIG data currently have only been processed to CSARP_qlook; processing to CSARP_standard is pending*
-
 ## Greenland
 
 :::{polar-map}
