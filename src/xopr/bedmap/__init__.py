@@ -18,11 +18,19 @@ from .geometry import (
     extract_flight_lines,
     calculate_haversine_distances,
     simplify_multiline_geometry,
+    # Polar projection functions
+    transform_coords_to_polar,
+    transform_coords_from_polar,
+    transform_geometry_to_polar,
+    transform_geometry_from_polar,
+    get_polar_bounds,
+    check_intersects_polar,
 )
 
 from .catalog import (
     create_bedmap_stac_item,
     build_bedmap_catalog,
+    build_bedmap_geoparquet_catalog,
 )
 
 from .query import (
@@ -47,9 +55,17 @@ __all__ = [
     'extract_flight_lines',
     'calculate_haversine_distances',
     'simplify_multiline_geometry',
+    # Polar projection functions
+    'transform_coords_to_polar',
+    'transform_coords_from_polar',
+    'transform_geometry_to_polar',
+    'transform_geometry_from_polar',
+    'get_polar_bounds',
+    'check_intersects_polar',
     # Catalog functions
     'create_bedmap_stac_item',
     'build_bedmap_catalog',
+    'build_bedmap_geoparquet_catalog',
     # Query functions
     'query_bedmap',
     'query_bedmap_stac',
