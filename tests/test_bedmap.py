@@ -426,7 +426,7 @@ class TestQuery:
         query = build_duckdb_query(
             parquet_urls=['file1.parquet'],
             columns=['longitude (degree_east)', 'latitude (degree_north)'],
-            max_items=100
+            max_rows=100
         )
 
         assert 'SELECT' in query
@@ -598,7 +598,7 @@ class TestIntegration:
             result = query_bedmap_local(
                 output_dir,
                 geometry=box(-71, -71, -69, -69),
-                max_items=10
+                max_rows=10
             )
 
             assert len(result) == 3

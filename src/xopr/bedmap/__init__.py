@@ -3,7 +3,7 @@ Bedmap data integration module for xopr.
 
 This module provides functionality to:
 - Convert bedmap CSV files to cloud-optimized GeoParquet format
-- Create STAC catalogs for bedmap data discovery
+- Create GeoParquet STAC catalogs for bedmap data discovery
 - Query and retrieve bedmap data efficiently
 - Compare bedmap data with OPR layer picks
 """
@@ -18,6 +18,7 @@ from .geometry import (
     extract_flight_lines,
     calculate_haversine_distances,
     simplify_multiline_geometry,
+    calculate_bbox,
     # Polar projection functions
     transform_coords_to_polar,
     transform_coords_from_polar,
@@ -28,15 +29,15 @@ from .geometry import (
 )
 
 from .catalog import (
-    create_bedmap_stac_item,
-    build_bedmap_catalog,
+    read_parquet_metadata,
     build_bedmap_geoparquet_catalog,
 )
 
 from .query import (
     query_bedmap,
-    query_bedmap_stac,
+    query_bedmap_catalog,
     query_bedmap_local,
+    build_duckdb_query,
 )
 
 from .compare import (
@@ -55,6 +56,7 @@ __all__ = [
     'extract_flight_lines',
     'calculate_haversine_distances',
     'simplify_multiline_geometry',
+    'calculate_bbox',
     # Polar projection functions
     'transform_coords_to_polar',
     'transform_coords_from_polar',
@@ -63,13 +65,13 @@ __all__ = [
     'get_polar_bounds',
     'check_intersects_polar',
     # Catalog functions
-    'create_bedmap_stac_item',
-    'build_bedmap_catalog',
+    'read_parquet_metadata',
     'build_bedmap_geoparquet_catalog',
     # Query functions
     'query_bedmap',
-    'query_bedmap_stac',
+    'query_bedmap_catalog',
     'query_bedmap_local',
+    'build_duckdb_query',
     # Comparison functions
     'compare_with_opr',
     'match_bedmap_to_opr',

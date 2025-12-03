@@ -11,9 +11,9 @@ This module provides functions for:
 import numpy as np
 import pandas as pd
 import shapely
-from shapely.geometry import LineString, MultiLineString, Point, Polygon
+from shapely.geometry import LineString, MultiLineString
 from shapely.ops import transform as shapely_transform
-from typing import Tuple, List, Optional, Union
+from typing import Tuple, Optional, Union
 from haversine import haversine_vector, Unit
 from pyproj import Transformer, CRS
 
@@ -49,7 +49,6 @@ def calculate_haversine_distances(
     if len(lat_lon_array) < 2:
         return np.array([])
 
-    # Haversine expects (lat, lon) tuples
     coords = lat_lon_array
     coords_shifted = np.roll(coords, -1, axis=0)
 
@@ -133,10 +132,6 @@ def extract_flight_lines(
     if not segments:
         return None
 
-    # Return single LineString if only one segment, otherwise MultiLineString
-    if len(segments) == 1:
-        return MultiLineString(segments)
-
     return MultiLineString(segments)
 
 
@@ -148,15 +143,12 @@ def simplify_multiline_geometry(
     """
     Simplify multiline geometry to reduce storage size.
 
-    Uses the Douglas-Peucker algorithm to reduce the number of vertices
-    while preserving the overall shape of the flight lines.
-
     Parameters
     ----------
     geometry : MultiLineString
         Input multiline geometry to simplify
     tolerance_deg : float
-        Simplification tolerance in degrees (larger values = more simplification)
+        Simplification tolerance in degrees
     preserve_topology : bool
         Whether to preserve topology during simplification
 
@@ -168,7 +160,6 @@ def simplify_multiline_geometry(
     if geometry is None or geometry.is_empty:
         return geometry
 
-    # Simplify the geometry
     simplified = geometry.simplify(tolerance_deg, preserve_topology=preserve_topology)
 
     # Ensure we still have a MultiLineString
@@ -205,76 +196,12 @@ def calculate_bbox(
     if valid_coords.empty:
         return None
 
-    min_lon = valid_coords[lon_col].min()
-    max_lon = valid_coords[lon_col].max()
-    min_lat = valid_coords[lat_col].min()
-    max_lat = valid_coords[lat_col].max()
-
-    return (min_lon, min_lat, max_lon, max_lat)
-
-
-def create_bbox_polygon(
-    bbox: Tuple[float, float, float, float]
-) -> shapely.geometry.Polygon:
-    """
-    Create a polygon from a bounding box.
-
-    Parameters
-    ----------
-    bbox : tuple
-        Bounding box as (min_lon, min_lat, max_lon, max_lat)
-
-    Returns
-    -------
-    shapely.geometry.Polygon
-        Polygon representing the bounding box
-    """
-    if bbox is None:
-        return None
-
-    min_lon, min_lat, max_lon, max_lat = bbox
-
-    return shapely.geometry.box(min_lon, min_lat, max_lon, max_lat)
-
-
-def get_geometry_wkt(geometry: shapely.geometry.base.BaseGeometry) -> str:
-    """
-    Convert geometry to Well-Known Text (WKT) format.
-
-    Parameters
-    ----------
-    geometry : shapely.geometry.base.BaseGeometry
-        Input geometry
-
-    Returns
-    -------
-    str
-        WKT representation of the geometry
-    """
-    if geometry is None:
-        return None
-
-    return geometry.wkt
-
-
-def get_geometry_bounds(geometry: shapely.geometry.base.BaseGeometry) -> Tuple[float, float, float, float]:
-    """
-    Get bounds of a geometry.
-
-    Parameters
-    ----------
-    geometry : shapely.geometry.base.BaseGeometry
-        Input geometry
-
-    Returns
-    -------
-    tuple
-        Bounds as (min_x, min_y, max_x, max_y)
-    """
-    if geometry is None or geometry.is_empty:
-        return None
-
-    return geometry.bounds
+    return (
+        valid_coords[lon_col].min(),
+        valid_coords[lat_col].min(),
+        valid_coords[lon_col].max(),
+        valid_coords[lat_col].max()
+    )
 
 
 # =============================================================================
@@ -426,25 +353,3 @@ def check_intersects_polar(
     polar2 = transform_geometry_to_polar(geometry2)
 
     return polar1.intersects(polar2)
-
-
-def create_polar_bbox_filter(
-    geometry: shapely.geometry.base.BaseGeometry
-) -> Tuple[float, float, float, float]:
-    """
-    Create bounding box filter values for DuckDB queries in polar coordinates.
-
-    Returns the bounds of the query geometry in EPSG:3031 coordinates,
-    which can be used to filter data points after transforming them to polar.
-
-    Parameters
-    ----------
-    geometry : shapely.geometry.base.BaseGeometry
-        Query geometry in WGS84 (EPSG:4326)
-
-    Returns
-    -------
-    tuple
-        (x_min, y_min, x_max, y_max) in EPSG:3031 (meters)
-    """
-    return get_polar_bounds(geometry)
