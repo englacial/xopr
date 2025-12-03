@@ -6,17 +6,17 @@
 [![PyPI Version](https://img.shields.io/pypi/v/xopr.svg)](https://pypi.org/project/xopr/)
 [![License](https://img.shields.io/github/license/englacial/xopr.svg)](LICENSE)
 
-**Flight Coverage:** <!--ARCTIC_BADGE-->![Arctic](https://img.shields.io/badge/Arctic-612696%20km-00A4CC)<!--/ARCTIC_BADGE--> <!--ANTARCTIC_BADGE-->![Antarctic](https://img.shields.io/badge/Antarctic-406657%20km-FF6B35)<!--/ANTARCTIC_BADGE-->
+**Flight Coverage:** <!--ARCTIC_BADGE-->![Arctic](https://img.shields.io/badge/Arctic-612696%20km-00A4CC)<!--/ARCTIC_BADGE--> <!--ANTARCTIC_BADGE-->![Antarctic](https://img.shields.io/badge/Antarctic-422956%20km-FF6B35)<!--/ANTARCTIC_BADGE-->
 
 <!--TOTAL_BADGE-->
 ![Total Data Ingest](https://progress-bar.xyz/29/?scale=100&title=Total%20Data%20Ingest&width=200&color=babaca&suffix=%25)
 <!--/TOTAL_BADGE-->
 
-*Data last updated: <!--LAST_UPDATED-->2025-11-03<!--/LAST_UPDATED-->*
+*Data last updated: <!--LAST_UPDATED-->2025-12-03<!--/LAST_UPDATED-->*
 
 **Try our code in binder:** [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/englacial/xopr/HEAD?urlpath=lab/tree/docs/notebooks)
 
-**Documentation:** [![Jupyter Book Badge](https://jupyterbook.org/badge.svg)](https://docs.englacial.org/xopr/)
+**Documentation:** [![Jupyter Book Badge](https://img.shields.io/badge/jupyter-book-orange)](https://docs.englacial.org/xopr/)
 
 **Contributor Code of Conduct:** [![Code of Conduct](https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
@@ -35,6 +35,6 @@ Check out our [documentation](https://docs.englacial.org/xopr/) to get started. 
 This library was originally written by Thomas Teisberg and Shane Grigsby. It is open source and licensed udner the [MIT License](./LICENSE).
 
 <!-- Hidden tracking values for GitHub Action -->
-<!-- ARCTIC_VALUE: 612696 -->
-<!-- ANTARCTIC_VALUE: 406657 -->
-<!-- TOTAL_VALUE: 1019353 -->
+<!--ARCTIC_VALUE-->612696<!--/ARCTIC_VALUE-->
+<!--ANTARCTIC_VALUE-->422956<!--/ANTARCTIC_VALUE-->
+<!--TOTAL_VALUE-->1035652<!--/TOTAL_VALUE-->
