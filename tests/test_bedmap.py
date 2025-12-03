@@ -55,9 +55,10 @@ class TestGeometry:
     def test_extract_flight_lines(self):
         """Test flight line extraction with segmentation."""
         # Create test data with a gap
+        # First 3 points are close together (< 10km), then a big gap, then 2 more close points
         df = pd.DataFrame({
-            'longitude (degree_east)': [-70, -70.1, -70.2, -60, -60.1],  # Gap between 3rd and 4th
-            'latitude (degree_north)': [-70, -70.1, -70.2, -70, -70.1],
+            'longitude (degree_east)': [-70.0, -70.05, -70.1, -60.0, -60.05],  # Gap between 3rd and 4th
+            'latitude (degree_north)': [-70.0, -70.05, -70.1, -70.0, -70.05],
         })
 
         lines = extract_flight_lines(df, distance_threshold_km=10.0)

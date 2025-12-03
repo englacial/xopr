@@ -52,9 +52,9 @@ jobs:
       id: current
       run: |
         # Extract current values from README
-        CURRENT_ARCTIC=$(grep -oP '(?<=<!--ARCTIC_VALUE-->)[0-9]+(?=<!--/ARCTIC_VALUE-->)' README.md || echo "0")
-        CURRENT_ANTARCTIC=$(grep -oP '(?<=<!--ANTARCTIC_VALUE-->)[0-9]+(?=<!--/ANTARCTIC_VALUE-->)' README.md || echo "0")
-        CURRENT_TOTAL=$(grep -oP '(?<=<!--TOTAL_VALUE-->)[0-9]+(?=<!--/TOTAL_VALUE-->)' README.md || echo "0")
+        CURRENT_ARCTIC=$(grep -oP '(?<=<!-- ARCTIC_VALUE: )[0-9]+(?= -->)' README.md || echo "0")
+        CURRENT_ANTARCTIC=$(grep -oP '(?<=<!-- ANTARCTIC_VALUE: )[0-9]+(?= -->)' README.md || echo "0")
+        CURRENT_TOTAL=$(grep -oP '(?<=<!-- TOTAL_VALUE: )[0-9]+(?= -->)' README.md || echo "0")
         
         echo "arctic=${CURRENT_ARCTIC}" >> $GITHUB_OUTPUT
         echo "antarctic=${CURRENT_ANTARCTIC}" >> $GITHUB_OUTPUT
@@ -91,11 +91,11 @@ jobs:
         
         # Update Arctic badge and value
         sed -i "s|<!--ARCTIC_BADGE-->.*<!--/ARCTIC_BADGE-->|<!--ARCTIC_BADGE-->![Arctic](https://img.shields.io/badge/Arctic-${ARCTIC_FMT}%20km-00A4CC)<!--/ARCTIC_BADGE-->|g" README.md
-        sed -i "s|<!--ARCTIC_VALUE-->.*<!--/ARCTIC_VALUE-->|<!--ARCTIC_VALUE-->${ARCTIC}<!--/ARCTIC_VALUE-->|g" README.md
+        sed -i "s|<!-- ARCTIC_VALUE: [0-9]* -->|<!-- ARCTIC_VALUE: ${ARCTIC} -->|g" README.md
         
         # Update Antarctic badge and value
         sed -i "s|<!--ANTARCTIC_BADGE-->.*<!--/ANTARCTIC_BADGE-->|<!--ANTARCTIC_BADGE-->![Antarctic](https://img.shields.io/badge/Antarctic-${ANTARCTIC_FMT}%20km-FF6B35)<!--/ANTARCTIC_BADGE-->|g" README.md
-        sed -i "s|<!--ANTARCTIC_VALUE-->.*<!--/ANTARCTIC_VALUE-->|<!--ANTARCTIC_VALUE-->${ANTARCTIC}<!--/ANTARCTIC_VALUE-->|g" README.md
+        sed -i "s|<!-- ANTARCTIC_VALUE: [0-9]* -->|<!-- ANTARCTIC_VALUE: ${ANTARCTIC} -->|g" README.md
         
         # Calculate percentage for progress bar (total / 3,500,000 * 100)
         PERCENTAGE=$(echo "scale=0; ${TOTAL} * 100 / 3500000" | bc)
@@ -103,7 +103,7 @@ jobs:
         # Update Total progress bar badge (multi-line replacement)
         # Use perl for multi-line regex replacement
         perl -i -0pe "s|<!--TOTAL_BADGE-->.*?<!--/TOTAL_BADGE-->|<!--TOTAL_BADGE-->\n![Total Data Ingest](https://progress-bar.xyz/${PERCENTAGE}/?scale=100&title=Total%20Data%20Ingest&width=200&color=babaca&suffix=%25)\n<!--/TOTAL_BADGE-->|s" README.md
-        sed -i "s|<!--TOTAL_VALUE-->.*<!--/TOTAL_VALUE-->|<!--TOTAL_VALUE-->${TOTAL}<!--/TOTAL_VALUE-->|g" README.md
+        sed -i "s|<!-- TOTAL_VALUE: [0-9]* -->|<!-- TOTAL_VALUE: ${TOTAL} -->|g" README.md
         
         # Update last updated date - only updates when km values change
         sed -i "s|<!--LAST_UPDATED-->.*<!--/LAST_UPDATED-->|<!--LAST_UPDATED-->${CURRENT_DATE}<!--/LAST_UPDATED-->|g" README.md
