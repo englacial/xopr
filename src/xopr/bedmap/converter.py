@@ -23,7 +23,6 @@ from .geometry import (
     extract_flight_lines,
     simplify_multiline_geometry,
     calculate_bbox,
-    create_bbox_polygon
 )
 
 
@@ -330,7 +329,6 @@ def convert_bedmap_csv(
 
     # Calculate spatial bounds
     bbox = calculate_bbox(df)
-    bbox_polygon = create_bbox_polygon(bbox) if bbox else None
 
     # Extract temporal extent
     temporal_start, temporal_end = extract_temporal_extent(df, metadata)
