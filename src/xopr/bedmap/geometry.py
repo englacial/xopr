@@ -5,14 +5,26 @@ This module provides functions for:
 - Calculating haversine distances between points
 - Extracting flight lines from point data
 - Simplifying geometries for STAC catalog storage
+- Polar projection transformations for Antarctic data
 """
 
 import numpy as np
 import pandas as pd
 import shapely
-from shapely.geometry import LineString, MultiLineString, Point
-from typing import Tuple, List, Optional
+from shapely.geometry import LineString, MultiLineString, Point, Polygon
+from shapely.ops import transform as shapely_transform
+from typing import Tuple, List, Optional, Union
 from haversine import haversine_vector, Unit
+from pyproj import Transformer, CRS
+
+# Antarctic Polar Stereographic projection (EPSG:3031)
+# This projection is centered on the South Pole and eliminates antimeridian issues
+ANTARCTIC_CRS = CRS.from_epsg(3031)
+WGS84_CRS = CRS.from_epsg(4326)
+
+# Create transformers (cached for performance)
+_transformer_to_polar = Transformer.from_crs(WGS84_CRS, ANTARCTIC_CRS, always_xy=True)
+_transformer_from_polar = Transformer.from_crs(ANTARCTIC_CRS, WGS84_CRS, always_xy=True)
 
 
 def calculate_haversine_distances(
@@ -263,3 +275,176 @@ def get_geometry_bounds(geometry: shapely.geometry.base.BaseGeometry) -> Tuple[f
         return None
 
     return geometry.bounds
+
+
+# =============================================================================
+# Polar Projection Functions (EPSG:3031 - Antarctic Polar Stereographic)
+# =============================================================================
+
+def transform_coords_to_polar(
+    lon: Union[float, np.ndarray],
+    lat: Union[float, np.ndarray]
+) -> Tuple[Union[float, np.ndarray], Union[float, np.ndarray]]:
+    """
+    Transform WGS84 coordinates to Antarctic Polar Stereographic (EPSG:3031).
+
+    Parameters
+    ----------
+    lon : float or np.ndarray
+        Longitude(s) in degrees (WGS84)
+    lat : float or np.ndarray
+        Latitude(s) in degrees (WGS84)
+
+    Returns
+    -------
+    tuple
+        (x, y) coordinates in EPSG:3031 (meters)
+    """
+    return _transformer_to_polar.transform(lon, lat)
+
+
+def transform_coords_from_polar(
+    x: Union[float, np.ndarray],
+    y: Union[float, np.ndarray]
+) -> Tuple[Union[float, np.ndarray], Union[float, np.ndarray]]:
+    """
+    Transform Antarctic Polar Stereographic (EPSG:3031) to WGS84.
+
+    Parameters
+    ----------
+    x : float or np.ndarray
+        X coordinate(s) in EPSG:3031 (meters)
+    y : float or np.ndarray
+        Y coordinate(s) in EPSG:3031 (meters)
+
+    Returns
+    -------
+    tuple
+        (lon, lat) coordinates in WGS84 (degrees)
+    """
+    return _transformer_from_polar.transform(x, y)
+
+
+def transform_geometry_to_polar(
+    geometry: shapely.geometry.base.BaseGeometry
+) -> shapely.geometry.base.BaseGeometry:
+    """
+    Transform a shapely geometry from WGS84 to Antarctic Polar Stereographic.
+
+    Parameters
+    ----------
+    geometry : shapely.geometry.base.BaseGeometry
+        Input geometry in WGS84 (EPSG:4326)
+
+    Returns
+    -------
+    shapely.geometry.base.BaseGeometry
+        Geometry in EPSG:3031
+    """
+    if geometry is None or geometry.is_empty:
+        return geometry
+
+    return shapely_transform(_transformer_to_polar.transform, geometry)
+
+
+def transform_geometry_from_polar(
+    geometry: shapely.geometry.base.BaseGeometry
+) -> shapely.geometry.base.BaseGeometry:
+    """
+    Transform a shapely geometry from Antarctic Polar Stereographic to WGS84.
+
+    Parameters
+    ----------
+    geometry : shapely.geometry.base.BaseGeometry
+        Input geometry in EPSG:3031
+
+    Returns
+    -------
+    shapely.geometry.base.BaseGeometry
+        Geometry in WGS84 (EPSG:4326)
+    """
+    if geometry is None or geometry.is_empty:
+        return geometry
+
+    return shapely_transform(_transformer_from_polar.transform, geometry)
+
+
+def get_polar_bounds(
+    geometry: shapely.geometry.base.BaseGeometry
+) -> Tuple[float, float, float, float]:
+    """
+    Get bounds of a WGS84 geometry in Antarctic Polar Stereographic projection.
+
+    This is useful for spatial queries because rectangular bounds in
+    polar projection don't have antimeridian issues.
+
+    Parameters
+    ----------
+    geometry : shapely.geometry.base.BaseGeometry
+        Input geometry in WGS84 (EPSG:4326)
+
+    Returns
+    -------
+    tuple
+        Bounds as (min_x, min_y, max_x, max_y) in EPSG:3031 (meters)
+    """
+    if geometry is None or geometry.is_empty:
+        return None
+
+    polar_geom = transform_geometry_to_polar(geometry)
+    return polar_geom.bounds
+
+
+def check_intersects_polar(
+    geometry1: shapely.geometry.base.BaseGeometry,
+    geometry2: shapely.geometry.base.BaseGeometry
+) -> bool:
+    """
+    Check if two geometries intersect using polar projection.
+
+    This avoids antimeridian crossing issues by transforming both
+    geometries to EPSG:3031 before checking intersection.
+
+    Parameters
+    ----------
+    geometry1 : shapely.geometry.base.BaseGeometry
+        First geometry in WGS84
+    geometry2 : shapely.geometry.base.BaseGeometry
+        Second geometry in WGS84
+
+    Returns
+    -------
+    bool
+        True if geometries intersect
+    """
+    if geometry1 is None or geometry2 is None:
+        return False
+    if geometry1.is_empty or geometry2.is_empty:
+        return False
+
+    polar1 = transform_geometry_to_polar(geometry1)
+    polar2 = transform_geometry_to_polar(geometry2)
+
+    return polar1.intersects(polar2)
+
+
+def create_polar_bbox_filter(
+    geometry: shapely.geometry.base.BaseGeometry
+) -> Tuple[float, float, float, float]:
+    """
+    Create bounding box filter values for DuckDB queries in polar coordinates.
+
+    Returns the bounds of the query geometry in EPSG:3031 coordinates,
+    which can be used to filter data points after transforming them to polar.
+
+    Parameters
+    ----------
+    geometry : shapely.geometry.base.BaseGeometry
+        Query geometry in WGS84 (EPSG:4326)
+
+    Returns
+    -------
+    tuple
+        (x_min, y_min, x_max, y_max) in EPSG:3031 (meters)
+    """
+    return get_polar_bounds(geometry)
