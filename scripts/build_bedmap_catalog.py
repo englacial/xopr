@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 """
-Build STAC catalog from bedmap GeoParquet files.
+Build GeoParquet STAC catalogs from bedmap data files.
+
+Creates separate catalog files per bedmap version:
+- bedmap1.parquet (BM1 items)
+- bedmap2.parquet (BM2 items)
+- bedmap3.parquet (BM3 items)
 
 Usage:
     python scripts/build_bedmap_catalog.py --input scripts/output/bedmap --output scripts/output/bedmap_catalog
@@ -13,20 +18,23 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
-from xopr.bedmap import build_bedmap_catalog
+from xopr.bedmap import build_bedmap_geoparquet_catalog
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Build STAC catalog from bedmap GeoParquet files',
+        description='Build GeoParquet STAC catalogs from bedmap data files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Build catalog from parquet files
+  # Build catalogs from parquet files
+  python scripts/build_bedmap_catalog.py
+
+  # Build with custom paths
   python scripts/build_bedmap_catalog.py --input scripts/output/bedmap --output scripts/output/bedmap_catalog
 
   # Build with custom base URL
-  python scripts/build_bedmap_catalog.py --input scripts/output/bedmap --output scripts/output/bedmap_catalog --base-href s3://my-bucket/bedmap/
+  python scripts/build_bedmap_catalog.py --base-href gs://my-bucket/bedmap/data/
         """
     )
 
@@ -34,14 +42,14 @@ Examples:
         '--input', '-i',
         type=str,
         default='scripts/output/bedmap',
-        help='Directory containing bedmap parquet files'
+        help='Directory containing bedmap parquet data files'
     )
 
     parser.add_argument(
         '--output', '-o',
         type=str,
         default='scripts/output/bedmap_catalog',
-        help='Output directory for STAC catalog'
+        help='Output directory for GeoParquet catalog files'
     )
 
     parser.add_argument(
@@ -49,20 +57,6 @@ Examples:
         type=str,
         default='gs://opr_stac/bedmap/data/',
         help='Base URL/path for data assets in catalog'
-    )
-
-    parser.add_argument(
-        '--title',
-        type=str,
-        default='Bedmap Data Catalog',
-        help='Title for the STAC catalog'
-    )
-
-    parser.add_argument(
-        '--description',
-        type=str,
-        default='STAC catalog for Bedmap Antarctic ice thickness data',
-        help='Description for the STAC catalog'
     )
 
     args = parser.parse_args()
@@ -83,43 +77,32 @@ Examples:
         print("Please run convert_bedmap.py first")
         sys.exit(1)
 
-    print(f"Building STAC catalog for bedmap data")
+    print(f"Building GeoParquet STAC catalogs for bedmap data")
     print(f"  Input directory: {parquet_dir}")
     print(f"  Output directory: {catalog_dir}")
     print(f"  Base href: {args.base_href}")
-    print(f"  Parquet files found: {len(parquet_files)}")
+    print(f"  Data files found: {len(parquet_files)}")
     print()
 
-    # Build the catalog
+    # Build the GeoParquet catalogs
     try:
-        catalog = build_bedmap_catalog(
+        catalogs = build_bedmap_geoparquet_catalog(
             parquet_dir=parquet_dir,
-            catalog_dir=catalog_dir,
+            output_dir=catalog_dir,
             base_href=args.base_href,
-            catalog_title=args.title,
-            catalog_description=args.description
         )
 
         print(f"\n{'='*60}")
-        print("STAC Catalog Build Summary:")
-        print(f"  Catalog ID: {catalog.id}")
-        print(f"  Title: {catalog.title}")
+        print("GeoParquet Catalog Build Summary:")
+        total_items = sum(len(gdf) for gdf in catalogs.values())
+        print(f"  Total catalogs: {len(catalogs)}")
+        print(f"  Total items: {total_items}")
 
-        # Count collections and items
-        n_collections = len(list(catalog.get_collections()))
-        n_items = sum(len(list(col.get_items())) for col in catalog.get_collections())
-
-        print(f"  Collections: {n_collections}")
-        print(f"  Total items: {n_items}")
-
-        # List collections
-        print(f"\nCollections created:")
-        for collection in catalog.get_collections():
-            n_col_items = len(list(collection.get_items()))
-            print(f"    {collection.id}: {n_col_items} items")
+        for version, gdf in catalogs.items():
+            version_num = version[-1]
+            print(f"    bedmap{version_num}.parquet: {len(gdf)} items")
 
         print(f"\nCatalog files written to: {catalog_dir}")
-        print(f"  Root catalog: {catalog_dir / 'catalog.json'}")
         print(f"{'='*60}")
 
     except Exception as e:

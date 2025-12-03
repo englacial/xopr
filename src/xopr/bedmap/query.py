@@ -20,6 +20,12 @@ import shapely
 from shapely.geometry import shape, box
 from rustac import DuckdbClient
 
+from .geometry import (
+    check_intersects_polar,
+    transform_coords_to_polar,
+    get_polar_bounds,
+)
+
 
 def query_bedmap_stac(
     stac_catalog_path: str = 'gs://opr_stac/bedmap/catalog/',
@@ -75,10 +81,11 @@ def query_bedmap_stac(
 
         # Iterate through items in collection
         for item in collection.get_items():
-            # Check spatial filter
+            # Check spatial filter using polar projection (handles antimeridian)
             if geometry and item.geometry:
                 item_shape = shape(item.geometry)
-                if not geometry.intersects(item_shape):
+                # Use polar projection for intersection to avoid antimeridian issues
+                if not check_intersects_polar(geometry, item_shape):
                     continue
 
             # Check temporal filter
@@ -117,12 +124,105 @@ def query_bedmap_stac(
     return matching_items
 
 
+def _crosses_antimeridian(geometry: shapely.geometry.base.BaseGeometry) -> bool:
+    """
+    Check if a geometry crosses the antimeridian (180°/-180° longitude).
+
+    Parameters
+    ----------
+    geometry : shapely geometry
+        Geometry to check
+
+    Returns
+    -------
+    bool
+        True if geometry crosses antimeridian
+    """
+    if geometry is None:
+        return False
+
+    bounds = geometry.bounds  # (minx, miny, maxx, maxy)
+    lon_min, lon_max = bounds[0], bounds[2]
+
+    # If min_lon > max_lon, the geometry crosses the antimeridian
+    # This can happen with geometries that wrap around
+    if lon_min > lon_max:
+        return True
+
+    # Also check if the geometry spans more than 180 degrees
+    # which would indicate it crosses the antimeridian
+    if lon_max - lon_min > 180:
+        return True
+
+    return False
+
+
+def _build_polar_sql_filter(polar_bounds: Tuple[float, float, float, float]) -> str:
+    """
+    Build SQL WHERE clause for filtering in polar coordinates.
+
+    Uses a spherical approximation of Antarctic Polar Stereographic (EPSG:3031)
+    that can be computed directly in SQL. The formula approximates the ellipsoidal
+    projection well enough for spatial filtering purposes.
+
+    Parameters
+    ----------
+    polar_bounds : tuple
+        (x_min, y_min, x_max, y_max) in EPSG:3031 meters
+
+    Returns
+    -------
+    str
+        SQL WHERE clause fragment
+    """
+    x_min, y_min, x_max, y_max = polar_bounds
+
+    # Spherical approximation of South Polar Stereographic
+    # Based on EPSG:3031 with latitude of true scale at -71°
+    # R = 6378137 (WGS84 semi-major axis)
+    # k0 = scale factor at lat of true scale
+    # For lat_ts = -71°: k0 = (1 + sin(71°)) / 2 ≈ 0.9723
+    #
+    # polar_x = R * k * cos(lat) * sin(lon) / (1 + sin(-lat))
+    # polar_y = -R * k * cos(lat) * cos(lon) / (1 + sin(-lat))
+    #
+    # Simplified for SQL (scale factor absorbed into comparison):
+    # We compute x_proj and y_proj and compare against bounds
+
+    # For South Polar Stereographic (EPSG:3031):
+    # - Origin at South Pole
+    # - Y axis points toward prime meridian (lon=0)
+    # - X axis points toward 90°E
+    # Formula: x = rho * sin(lon), y = rho * cos(lon)
+    # where rho = R * k0 * cos(lat) / (1 + sin(-lat))
+    # k0 includes scale factor at latitude of true scale (71°S)
+    polar_sql = f"""
+    (
+        -- Compute Antarctic Polar Stereographic coordinates (spherical approx)
+        -- and filter on bounding box
+        (6378137.0 * (1.0 + SIN(RADIANS(71.0))) * COS(RADIANS("latitude (degree_north)")) * SIN(RADIANS("longitude (degree_east)")))
+            / (1.0 + SIN(RADIANS(-"latitude (degree_north)"))) >= {x_min}
+        AND
+        (6378137.0 * (1.0 + SIN(RADIANS(71.0))) * COS(RADIANS("latitude (degree_north)")) * SIN(RADIANS("longitude (degree_east)")))
+            / (1.0 + SIN(RADIANS(-"latitude (degree_north)"))) <= {x_max}
+        AND
+        (6378137.0 * (1.0 + SIN(RADIANS(71.0))) * COS(RADIANS("latitude (degree_north)")) * COS(RADIANS("longitude (degree_east)")))
+            / (1.0 + SIN(RADIANS(-"latitude (degree_north)"))) >= {y_min}
+        AND
+        (6378137.0 * (1.0 + SIN(RADIANS(71.0))) * COS(RADIANS("latitude (degree_north)")) * COS(RADIANS("longitude (degree_east)")))
+            / (1.0 + SIN(RADIANS(-"latitude (degree_north)"))) <= {y_max}
+    )
+    """
+    return polar_sql.strip()
+
+
 def build_duckdb_query(
     parquet_urls: List[str],
     geometry: Optional[shapely.geometry.base.BaseGeometry] = None,
     date_range: Optional[Tuple[datetime, datetime]] = None,
     columns: Optional[List[str]] = None,
-    max_items: Optional[int] = None
+    max_items: Optional[int] = None,
+    use_polar_filter: bool = True
 ) -> str:
     """
     Build DuckDB SQL query for partial reads.
@@ -139,6 +239,9 @@ def build_duckdb_query(
         Columns to select
     max_items : int, optional
         Limit number of rows
+    use_polar_filter : bool, default True
+        Use Antarctic Polar Stereographic projection for spatial filtering.
+        This correctly handles queries that cross the antimeridian (180°/-180°).
 
     Returns
     -------
@@ -167,16 +270,22 @@ def build_duckdb_query(
 
     # Spatial filter
     if geometry:
-        bounds = geometry.bounds  # (minx, miny, maxx, maxy)
-        where_conditions.append(
-            f'"longitude (degree_east)" >= {bounds[0]} AND '
-            f'"longitude (degree_east)" <= {bounds[2]} AND '
-            f'"latitude (degree_north)" >= {bounds[1]} AND '
-            f'"latitude (degree_north)" <= {bounds[3]}'
-        )
+        crosses_am = _crosses_antimeridian(geometry)
 
-        # TODO: Add more precise geometry filtering if needed
-        # This requires point-in-polygon checks which are more complex in SQL
+        if use_polar_filter or crosses_am:
+            # Use polar projection for filtering (handles antimeridian correctly)
+            polar_bounds = get_polar_bounds(geometry)
+            if polar_bounds:
+                where_conditions.append(_build_polar_sql_filter(polar_bounds))
+        else:
+            # Simple lat/lon bounding box (faster but fails at antimeridian)
+            bounds = geometry.bounds  # (minx, miny, maxx, maxy)
+            where_conditions.append(
+                f'"longitude (degree_east)" >= {bounds[0]} AND '
+                f'"longitude (degree_east)" <= {bounds[2]} AND '
+                f'"latitude (degree_north)" >= {bounds[1]} AND '
+                f'"latitude (degree_north)" <= {bounds[3]}'
+            )
 
     # Temporal filter
     if date_range:
