@@ -35,6 +35,6 @@ Check out our [documentation](https://docs.englacial.org/xopr/) to get started. 
 This library was originally written by Thomas Teisberg and Shane Grigsby. It is open source and licensed udner the [MIT License](./LICENSE).
 
 <!-- Hidden tracking values for GitHub Action -->
-<!--ARCTIC_VALUE-->612696<!--/ARCTIC_VALUE-->
-<!--ANTARCTIC_VALUE-->406657<!--/ANTARCTIC_VALUE-->
-<!--TOTAL_VALUE-->1019353<!--/TOTAL_VALUE-->
+<!-- ARCTIC_VALUE: 612696 -->
+<!-- ANTARCTIC_VALUE: 406657 -->
+<!-- TOTAL_VALUE: 1019353 -->
