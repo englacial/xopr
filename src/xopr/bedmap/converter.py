@@ -29,6 +29,24 @@ HILBERT_ROW_THRESHOLD = 600_000
 HILBERT_ROW_GROUP_SIZE = 50_000
 
 
+def _normalize_longitude(lon: np.ndarray) -> np.ndarray:
+    """
+    Normalize longitude values from 0-360 to -180 to 180 convention.
+
+    Parameters
+    ----------
+    lon : numpy.ndarray
+        Longitude values (may be in 0-360 or -180 to 180 range)
+
+    Returns
+    -------
+    numpy.ndarray
+        Longitude values in -180 to 180 range
+    """
+    # Convert values > 180 to negative (0-360 -> -180 to 180)
+    return np.where(lon > 180, lon - 360, lon)
+
+
 def parse_bedmap_metadata(csv_path: Union[str, Path]) -> Dict:
     """
     Parse metadata from bedmap CSV header lines.
@@ -359,6 +377,11 @@ def convert_bedmap_csv(
     for col in numeric_columns:
         df[col] = df[col].replace(-9999, np.nan)
 
+    # Normalize longitude from 0-360 to -180 to 180 convention
+    df['longitude (degree_east)'] = _normalize_longitude(
+        df['longitude (degree_east)'].values
+    )
+
     # Handle date/time conversion
     df['timestamp'] = create_timestamps(df, metadata)
 
@@ -400,7 +423,7 @@ def convert_bedmap_csv(
         'original_metadata': metadata,
     }
 
-    # Create Point geometry from lon/lat columns
+    # Create Point geometry from lon/lat columns (already normalized above)
     geometry = [
         Point(lon, lat) for lon, lat in
         zip(df['longitude (degree_east)'], df['latitude (degree_north)'])

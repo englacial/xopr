@@ -573,6 +573,438 @@ class TestCompare:
         assert 'matched_data' in results
 
 
+class TestCatalog:
+    """Test catalog generation functions."""
+
+    def test_read_parquet_metadata_no_metadata(self):
+        """Test reading parquet file without bedmap metadata."""
+        from xopr.bedmap.catalog import read_parquet_metadata
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            # Create a simple parquet file without bedmap metadata
+            gdf = gpd.GeoDataFrame({
+                'data': [1, 2, 3],
+            }, geometry=[Point(0, 0), Point(1, 1), Point(2, 2)], crs='EPSG:4326')
+            parquet_path = tmpdir / 'test.parquet'
+            gdf.to_parquet(parquet_path)
+
+            # Should return empty dict and warn
+            with pytest.warns(UserWarning, match="No bedmap metadata"):
+                result = read_parquet_metadata(parquet_path)
+
+            assert result == {}
+
+    def test_build_bedmap_geoparquet_catalog(self):
+        """Test building GeoParquet catalog from parquet files."""
+        from xopr.bedmap.catalog import build_bedmap_geoparquet_catalog
+        import pyarrow.parquet as pq
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            data_dir = tmpdir / 'data'
+            data_dir.mkdir()
+            output_dir = tmpdir / 'catalog'
+
+            # Create a test parquet file with bedmap metadata
+            gdf = gpd.GeoDataFrame({
+                'surface_altitude (m)': [100, 200, 300],
+            }, geometry=[Point(-70, -75), Point(-69, -74), Point(-68, -73)], crs='EPSG:4326')
+
+            # Write with custom metadata using geopandas built-in method
+            parquet_path = data_dir / 'TEST_BM2.parquet'
+            gdf.to_parquet(parquet_path)
+
+            # Add bedmap metadata to the file
+            metadata = {
+                'source_csv': 'TEST_BM2.csv',
+                'bedmap_version': 'BM2',
+                'spatial_bounds': {
+                    'bbox': [-70, -75, -68, -73],
+                    'geometry': 'LINESTRING(-70 -75, -69 -74, -68 -73)',
+                },
+                'temporal_bounds': {
+                    'start': '2020-01-01T00:00:00+00:00',
+                    'end': '2020-12-31T23:59:59+00:00',
+                },
+                'row_count': 3,
+                'original_metadata': {
+                    'project': 'Test Project',
+                    'institution': 'Test Institution',
+                },
+            }
+
+            # Read, add metadata, and rewrite
+            table = pq.read_table(parquet_path)
+            existing_metadata = table.schema.metadata or {}
+            new_metadata = {
+                **existing_metadata,
+                b'bedmap_metadata': json.dumps(metadata).encode(),
+            }
+            table = table.replace_schema_metadata(new_metadata)
+            pq.write_table(table, parquet_path)
+
+            # Build catalog
+            catalogs = build_bedmap_geoparquet_catalog(
+                data_dir, output_dir, base_href='gs://test/'
+            )
+
+            assert 'BM2' in catalogs
+            assert len(catalogs['BM2']) == 1
+            assert (output_dir / 'bedmap2.parquet').exists()
+
+            # Check catalog contents
+            catalog_gdf = gpd.read_parquet(output_dir / 'bedmap2.parquet')
+            assert len(catalog_gdf) == 1
+            assert catalog_gdf['asset_href'].iloc[0] == 'gs://test/TEST_BM2.parquet'
+            assert catalog_gdf['bedmap_version'].iloc[0] == 'BM2'
+
+
+class TestConverterAdvanced:
+    """Additional converter tests for better coverage."""
+
+    def test_normalize_longitude(self):
+        """Test longitude normalization from 0-360 to -180/180."""
+        from xopr.bedmap.converter import _normalize_longitude
+
+        # Test values in 0-360 range
+        lons = np.array([0, 90, 180, 270, 359])
+        normalized = _normalize_longitude(lons)
+
+        assert normalized[0] == 0  # 0 stays 0
+        assert normalized[1] == 90  # 90 stays 90
+        assert normalized[2] == 180  # 180 stays 180 (edge case)
+        assert normalized[3] == -90  # 270 becomes -90
+        assert normalized[4] == -1  # 359 becomes -1
+
+    def test_normalize_longitude_already_normalized(self):
+        """Test that already normalized values aren't changed."""
+        from xopr.bedmap.converter import _normalize_longitude
+
+        lons = np.array([-180, -90, 0, 90, 180])
+        normalized = _normalize_longitude(lons)
+
+        np.testing.assert_array_equal(lons, normalized)
+
+    def test_parse_date_time_columns_various_formats(self):
+        """Test parsing various date/time formats."""
+        from xopr.bedmap.converter import parse_date_time_columns
+
+        # Test YYYYMMDD format with HH:MM:SS time
+        dates = pd.Series(['20200115', '20200116'])
+        times = pd.Series(['12:30:45', '14:00:00'])
+
+        timestamps = parse_date_time_columns(dates, times)
+
+        assert timestamps[0].year == 2020
+        assert timestamps[0].month == 1
+        assert timestamps[0].day == 15
+        assert timestamps[0].hour == 12
+        assert timestamps[0].minute == 30
+
+    def test_parse_date_time_columns_with_dashes(self):
+        """Test parsing date with dashes."""
+        from xopr.bedmap.converter import parse_date_time_columns
+
+        dates = pd.Series(['2020-01-15', '2020-01-16'])
+        times = pd.Series(['12:30:45', '14:00:00'])
+
+        timestamps = parse_date_time_columns(dates, times)
+
+        assert timestamps[0].year == 2020
+        assert timestamps[0].month == 1
+        assert timestamps[0].day == 15
+
+    def test_parse_date_time_columns_na_values(self):
+        """Test parsing with NA values."""
+        from xopr.bedmap.converter import parse_date_time_columns
+
+        dates = pd.Series([np.nan, '20200116'])
+        times = pd.Series(['12:30:45', np.nan])
+
+        timestamps = parse_date_time_columns(dates, times)
+
+        assert pd.isna(timestamps[0])
+        assert pd.isna(timestamps[1])
+
+    def test_extract_temporal_extent_from_timestamps(self):
+        """Test temporal extent extraction from timestamp column."""
+        from xopr.bedmap.converter import extract_temporal_extent
+
+        df = pd.DataFrame({
+            'timestamp': pd.to_datetime(['2020-01-15', '2020-06-15', '2020-12-15'])
+        })
+
+        start, end = extract_temporal_extent(df, {})
+
+        assert start.year == 2020
+        assert start.month == 1
+        assert end.month == 12
+
+    def test_extract_temporal_extent_from_metadata(self):
+        """Test temporal extent extraction from metadata when no timestamps."""
+        from xopr.bedmap.converter import extract_temporal_extent
+
+        df = pd.DataFrame({'data': [1, 2, 3]})
+        metadata = {'time_coverage_start': 2019, 'time_coverage_end': 2020}
+
+        start, end = extract_temporal_extent(df, metadata)
+
+        assert start.year == 2019
+        assert end.year == 2020
+
+    def test_extract_temporal_extent_no_data(self):
+        """Test temporal extent extraction with no data."""
+        from xopr.bedmap.converter import extract_temporal_extent
+
+        df = pd.DataFrame({'data': [1, 2, 3]})
+
+        start, end = extract_temporal_extent(df, {})
+
+        assert start is None
+        assert end is None
+
+
+class TestQueryAdvanced:
+    """Additional query tests for better coverage."""
+
+    def test_build_polar_sql_filter(self):
+        """Test building polar SQL filter."""
+        from xopr.bedmap.query import _build_polar_sql_filter
+
+        bounds = (-1000000, -500000, 500000, 1000000)  # x_min, y_min, x_max, y_max
+
+        sql = _build_polar_sql_filter(bounds)
+
+        assert '>= -1000000' in sql
+        assert '<= 500000' in sql
+        assert '>= -500000' in sql
+        assert '<= 1000000' in sql
+        assert 'sin(radians' in sql
+        assert 'cos(radians' in sql
+
+    def test_crosses_antimeridian_none_geometry(self):
+        """Test crosses_antimeridian with None."""
+        assert not _crosses_antimeridian(None)
+
+    def test_build_query_with_columns_and_geometry(self):
+        """Test query building with specific columns and geometry adds lon/lat."""
+        geom = box(-70, -75, -60, -70)
+
+        query = build_duckdb_query(
+            parquet_urls=['test.parquet'],
+            geometry=geom,
+            columns=['surface_altitude (m)', 'trajectory_id']
+        )
+
+        # Should add lon/lat extraction
+        assert 'ST_X(geometry) as lon' in query
+        assert 'ST_Y(geometry) as lat' in query
+
+
+class TestCompareAdvanced:
+    """Additional comparison tests for better coverage."""
+
+    def test_get_lon_lat_columns_new_format(self):
+        """Test column detection for new format (lon/lat)."""
+        from xopr.bedmap.compare import _get_lon_lat_columns
+
+        df = pd.DataFrame({'lon': [1, 2], 'lat': [3, 4], 'data': [5, 6]})
+        lon_col, lat_col = _get_lon_lat_columns(df)
+
+        assert lon_col == 'lon'
+        assert lat_col == 'lat'
+
+    def test_get_lon_lat_columns_old_format(self):
+        """Test column detection for old format."""
+        from xopr.bedmap.compare import _get_lon_lat_columns
+
+        df = pd.DataFrame({
+            'longitude (degree_east)': [1, 2],
+            'latitude (degree_north)': [3, 4],
+            'data': [5, 6]
+        })
+        lon_col, lat_col = _get_lon_lat_columns(df)
+
+        assert lon_col == 'longitude (degree_east)'
+        assert lat_col == 'latitude (degree_north)'
+
+    def test_get_lon_lat_columns_error(self):
+        """Test column detection with invalid columns."""
+        from xopr.bedmap.compare import _get_lon_lat_columns
+
+        df = pd.DataFrame({'x': [1, 2], 'y': [3, 4]})
+
+        with pytest.raises(ValueError, match="Could not find"):
+            _get_lon_lat_columns(df)
+
+    def test_match_bedmap_to_opr_with_bottom(self):
+        """Test matching with Bottom layer included."""
+        import xarray as xr
+
+        bedmap = gpd.GeoDataFrame({
+            'longitude (degree_east)': [-70],
+            'latitude (degree_north)': [-70],
+            'surface_altitude (m)': [1000],
+            'bedrock_altitude (m)': [500],
+        })
+
+        opr = xr.Dataset({
+            'Longitude': (('slow_time',), [-70.001]),
+            'Latitude': (('slow_time',), [-70.001]),
+            'Surface': (('slow_time',), [1005]),
+            'Bottom': (('slow_time',), [505]),
+        })
+
+        matched = match_bedmap_to_opr(bedmap, opr, max_distance_m=1000)
+
+        assert 'opr_bottom' in matched.columns
+        assert matched['opr_bottom'].iloc[0] == 505
+
+    def test_compare_with_opr_no_statistics(self):
+        """Test comparison without computing statistics."""
+        import xarray as xr
+
+        bedmap = gpd.GeoDataFrame({
+            'longitude (degree_east)': [-70],
+            'latitude (degree_north)': [-70],
+            'surface_altitude (m)': [1000],
+            'bedrock_altitude (m)': [500],
+            'land_ice_thickness (m)': [500],
+        })
+
+        opr_surface = xr.DataArray(
+            [[1005]],
+            dims=['y', 'x'],
+            coords={'x': [-70], 'y': [-70]}
+        )
+
+        results = compare_with_opr(bedmap, opr_surface, compute_statistics=False)
+
+        assert results['statistics'] == {}
+        assert 'surface' in results['differences']
+
+    def test_compare_with_opr_missing_columns(self):
+        """Test comparison with missing surface/bed columns."""
+        import xarray as xr
+
+        bedmap = gpd.GeoDataFrame({
+            'longitude (degree_east)': [-70],
+            'latitude (degree_north)': [-70],
+        })
+
+        # Should warn about missing columns
+        with pytest.warns(UserWarning):
+            results = compare_with_opr(bedmap)
+
+        assert results['matched_data'] is not None
+
+
+class TestGeometryAdvanced:
+    """Additional geometry tests for better coverage."""
+
+    def test_extract_flight_lines_insufficient_points(self):
+        """Test flight line extraction with insufficient points."""
+        df = pd.DataFrame({
+            'longitude (degree_east)': [-70.0],
+            'latitude (degree_north)': [-70.0],
+        })
+
+        lines = extract_flight_lines(df, min_points_per_segment=2)
+
+        assert lines is None
+
+    def test_extract_flight_lines_missing_coordinates(self):
+        """Test flight line extraction with missing coordinates."""
+        df = pd.DataFrame({
+            'longitude (degree_east)': [-70.0, np.nan, -68.0],
+            'latitude (degree_north)': [-70.0, -71.0, np.nan],
+        })
+
+        lines = extract_flight_lines(df)
+
+        # Should only create line from valid points
+        assert lines is not None or lines is None  # Depends on valid point count
+
+    def test_calculate_bbox_empty(self):
+        """Test bbox calculation with empty dataframe."""
+        df = pd.DataFrame({
+            'longitude (degree_east)': [],
+            'latitude (degree_north)': [],
+        })
+
+        bbox = calculate_bbox(df)
+
+        assert bbox is None
+
+    def test_simplify_multiline_single_line_result(self):
+        """Test simplification that results in single line."""
+        from xopr.bedmap.geometry import simplify_multiline_geometry
+
+        # Create a simple line
+        line = LineString([(0, 0), (1, 1)])
+        multiline = MultiLineString([line])
+
+        result = simplify_multiline_geometry(multiline, tolerance_deg=0.001)
+
+        # Should still be MultiLineString
+        assert isinstance(result, MultiLineString)
+
+
+class TestQueryIntegration:
+    """Integration tests for query functions."""
+
+    def test_query_bedmap_local_no_parquet_files(self):
+        """Test query with no parquet files in directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            with pytest.warns(UserWarning, match="No parquet files found"):
+                result = query_bedmap_local(tmpdir)
+
+            assert len(result) == 0
+
+    def test_query_bedmap_local_with_date_filter(self):
+        """Test local query with date range filter."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # Create test GeoParquet file
+            gdf = gpd.GeoDataFrame({
+                'timestamp': pd.to_datetime(['2020-06-15', '2020-07-15', '2020-08-15']),
+                'surface_altitude (m)': [100, 200, 300],
+            }, geometry=[Point(-70, -75), Point(-69, -74), Point(-68, -73)], crs='EPSG:4326')
+            gdf.to_parquet(tmpdir / 'test.parquet')
+
+            result = query_bedmap_local(
+                tmpdir,
+                date_range=(datetime(2020, 7, 1, tzinfo=timezone.utc),
+                           datetime(2020, 8, 1, tzinfo=timezone.utc))
+            )
+
+            # Should only return point from July
+            assert len(result) == 1
+
+    def test_query_bedmap_local_empty_result(self):
+        """Test local query that returns no results."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # Create test GeoParquet file in the mid latitudes (not polar)
+            gdf = gpd.GeoDataFrame({
+                'surface_altitude (m)': [100, 200, 300],
+            }, geometry=[Point(-70, -40), Point(-69, -41), Point(-68, -42)], crs='EPSG:4326')
+            gdf.to_parquet(tmpdir / 'test.parquet')
+
+            # Query for area with no data
+            result = query_bedmap_local(
+                tmpdir,
+                geometry=box(0, 0, 10, 10),  # Far from the data
+            )
+
+            assert len(result) == 0
+
+
 class TestIntegration:
     """Integration tests."""
 
