@@ -236,10 +236,12 @@ class TestAntimeridianCrossing:
             use_polar_filter=True
         )
 
-        # Should contain polar coordinate math
-        assert 'SIN(RADIANS' in query
-        assert 'COS(RADIANS' in query
-        assert '6378137.0' in query  # WGS84 semi-major axis
+        # Should contain polar coordinate math using ST_X/ST_Y for GeoParquet
+        assert 'sin(radians' in query
+        assert 'cos(radians' in query
+        assert 'ST_X(geometry)' in query
+        assert 'ST_Y(geometry)' in query
+        assert '6371000.0' in query  # Earth radius for spherical approximation
 
     def test_duckdb_query_simple_bbox(self):
         """Test DuckDB query can use simple bbox filter when requested."""
@@ -251,10 +253,12 @@ class TestAntimeridianCrossing:
             use_polar_filter=False
         )
 
-        # Should contain simple comparisons, not polar math
-        assert '>= -70' in query
-        assert '<= -60' in query
-        assert 'SIN(RADIANS' not in query
+        # Should contain simple comparisons using ST_X/ST_Y for GeoParquet
+        assert 'ST_X(geometry) >= -70' in query
+        assert 'ST_X(geometry) <= -60' in query
+        assert 'ST_Y(geometry) >= -75' in query
+        assert 'ST_Y(geometry) <= -70' in query
+        assert 'sin(radians' not in query
 
     def test_duckdb_query_antimeridian_forces_polar(self):
         """Test DuckDB query forces polar filter for antimeridian-crossing geometry."""
@@ -273,7 +277,7 @@ class TestAntimeridianCrossing:
         # Note: shapely.box normalizes coordinates, so we need to check
         # if _crosses_antimeridian detected it
         if _crosses_antimeridian(geom):
-            assert 'SIN(RADIANS' in query
+            assert 'sin(radians' in query
 
 
 class TestAntimeridianIntegration:
@@ -283,18 +287,22 @@ class TestAntimeridianIntegration:
         """Test querying data that crosses the antimeridian with DuckDB."""
         import duckdb
 
-        # Create test data that spans the antimeridian (Ross Sea area)
-        test_data = pd.DataFrame({
-            'longitude (degree_east)': [170.0, 175.0, 180.0, -175.0, -170.0],
-            'latitude (degree_north)': [-75.0, -76.0, -77.0, -76.0, -75.0],
+        # Create test data as GeoParquet with Point geometry (Ross Sea area)
+        test_data = gpd.GeoDataFrame({
             'surface_altitude (m)': [100.0, 110.0, 120.0, 115.0, 105.0],
-        })
+        }, geometry=[
+            Point(170.0, -75.0),
+            Point(175.0, -76.0),
+            Point(180.0, -77.0),
+            Point(-175.0, -76.0),
+            Point(-170.0, -75.0),
+        ], crs='EPSG:4326')
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
             parquet_path = tmpdir / 'test_antimeridian.parquet'
 
-            # Write test data to parquet
+            # Write test data as GeoParquet
             test_data.to_parquet(parquet_path)
 
             # Query box that crosses antimeridian (should get all 5 points)
@@ -306,8 +314,9 @@ class TestAntimeridianIntegration:
                 use_polar_filter=True
             )
 
-            # Execute query
+            # Execute query with spatial extension
             conn = duckdb.connect()
+            conn.execute("INSTALL spatial; LOAD spatial;")
             result = conn.execute(query).df()
             conn.close()
 
@@ -324,6 +333,7 @@ class TestAntimeridianIntegration:
             )
 
             conn = duckdb.connect()
+            conn.execute("INSTALL spatial; LOAD spatial;")
             result_simple = conn.execute(query_simple).df()
             conn.close()
 
@@ -425,13 +435,13 @@ class TestQuery:
         """Test basic DuckDB query building."""
         query = build_duckdb_query(
             parquet_urls=['file1.parquet'],
-            columns=['longitude (degree_east)', 'latitude (degree_north)'],
+            columns=['trajectory_id', 'source_file'],
             max_rows=100
         )
 
         assert 'SELECT' in query
-        assert 'longitude (degree_east)' in query
-        assert 'latitude (degree_north)' in query
+        assert 'trajectory_id' in query
+        assert 'source_file' in query
         assert 'LIMIT 100' in query
 
     def test_build_duckdb_query_with_geometry(self):
@@ -443,10 +453,12 @@ class TestQuery:
             geometry=bbox_geom
         )
 
-        # Default behavior uses polar projection filter
+        # Default behavior uses polar projection filter with ST_X/ST_Y for GeoParquet
         assert 'WHERE' in query
-        assert 'SIN(RADIANS' in query
-        assert 'COS(RADIANS' in query
+        assert 'sin(radians' in query
+        assert 'cos(radians' in query
+        assert 'ST_X(geometry)' in query
+        assert 'ST_Y(geometry)' in query
 
     def test_build_duckdb_query_with_geometry_simple_bbox(self):
         """Test DuckDB query with simple bbox filter (no polar projection)."""
@@ -458,11 +470,12 @@ class TestQuery:
             use_polar_filter=False
         )
 
+        # GeoParquet uses ST_X/ST_Y to access coordinates
         assert 'WHERE' in query
-        assert 'longitude (degree_east)' in query
+        assert 'ST_X(geometry)' in query
+        assert 'ST_Y(geometry)' in query
         assert '>= -70' in query
         assert '<= -60' in query
-        assert 'latitude (degree_north)' in query
         assert '>= -75' in query
         assert '<= -70' in query
 
@@ -602,7 +615,9 @@ class TestIntegration:
             )
 
             assert len(result) == 3
-            assert 'longitude (degree_east)' in result.columns
+            # GeoParquet returns lon/lat columns extracted from geometry
+            assert 'lon' in result.columns
+            assert 'lat' in result.columns
             assert 'source_file' in result.columns
             assert result['source_file'].iloc[0] == 'TEST_2020_DATA_BM2'
 

@@ -37,7 +37,6 @@ from .query import (
     query_bedmap,
     query_bedmap_catalog,
     query_bedmap_local,
-    build_duckdb_query,
 )
 
 from .compare import (
@@ -71,7 +70,6 @@ __all__ = [
     'query_bedmap',
     'query_bedmap_catalog',
     'query_bedmap_local',
-    'build_duckdb_query',
     # Comparison functions
     'compare_with_opr',
     'match_bedmap_to_opr',
