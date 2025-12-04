@@ -27,6 +27,7 @@ dependencies = [
     "hdf5storage",
     "duckdb>=1.0.0",
     "haversine>=2.8.0",
+    "pyarrow",
 ]
 
 [project.optional-dependencies]
