@@ -30,6 +30,7 @@ project:
         - file: notebooks/reading_params.ipynb
         - file: notebooks/crossovers.ipynb
         - file: notebooks/bed_picks.ipynb
+        - file: notebooks/bedmap_demo.ipynb
     
 site:
   template: book-theme
