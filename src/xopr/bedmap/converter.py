@@ -12,6 +12,7 @@ This module handles:
 import pandas as pd
 import numpy as np
 import geopandas as gpd
+import pyarrow.csv as pa_csv
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List, Union
 from datetime import datetime, timezone
@@ -45,6 +46,46 @@ def _normalize_longitude(lon: np.ndarray) -> np.ndarray:
     """
     # Convert values > 180 to negative (0-360 -> -180 to 180)
     return np.where(lon > 180, lon - 360, lon)
+
+
+def _read_csv_fast(csv_path: Union[str, Path]) -> pd.DataFrame:
+    """
+    Read CSV file using pyarrow for better performance on large files.
+
+    Uses pyarrow.csv.read_csv() which is ~2x faster than pandas for large files
+    due to multi-threaded parsing. Falls back to pandas for small files or errors.
+
+    Parameters
+    ----------
+    csv_path : str or Path
+        Path to the CSV file
+
+    Returns
+    -------
+    pandas.DataFrame
+        Loaded data
+    """
+    csv_path = Path(csv_path)
+
+    # Count comment lines to skip
+    skip_rows = 0
+    with open(csv_path, 'r') as f:
+        for line in f:
+            if line.startswith('#'):
+                skip_rows += 1
+            else:
+                break
+
+    try:
+        # pyarrow is faster for medium/large files (>50k rows)
+        table = pa_csv.read_csv(
+            csv_path,
+            read_options=pa_csv.ReadOptions(skip_rows=skip_rows),
+        )
+        return table.to_pandas()
+    except Exception:
+        # Fall back to pandas if pyarrow fails
+        return pd.read_csv(csv_path, comment='#')
 
 
 def parse_bedmap_metadata(csv_path: Union[str, Path]) -> Dict:
@@ -281,7 +322,7 @@ def extract_temporal_extent(
     return (start_time, end_time)
 
 
-def _apply_hilbert_sorting(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+def _apply_hilbert_sorting(gdf: gpd.GeoDataFrame, verbose: bool = True) -> gpd.GeoDataFrame:
     """
     Apply Hilbert curve sorting to a GeoDataFrame for spatial locality.
 
@@ -292,6 +333,8 @@ def _apply_hilbert_sorting(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     ----------
     gdf : geopandas.GeoDataFrame
         GeoDataFrame with Point geometry
+    verbose : bool
+        Print progress messages
 
     Returns
     -------
@@ -299,22 +342,38 @@ def _apply_hilbert_sorting(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         Sorted GeoDataFrame
     """
     import duckdb
+    import time
+
+    row_count = len(gdf)
+    if verbose:
+        print(f"    Hilbert sort: extracting {row_count:,} coordinates...")
 
     # Extract coordinates
+    t0 = time.time()
     coords_df = pd.DataFrame({
         'lon': gdf.geometry.x,
         'lat': gdf.geometry.y,
     })
     coords_df['orig_idx'] = range(len(coords_df))
-
-    conn = duckdb.connect()
-    conn.execute("INSTALL spatial; LOAD spatial;")
-    conn.register('coords', coords_df)
+    if verbose:
+        print(f"    Hilbert sort: coordinates extracted ({time.time() - t0:.1f}s)")
 
     # Get file-specific bounds for Hilbert curve
     minx, miny, maxx, maxy = gdf.total_bounds
+    if verbose:
+        print(f"    Hilbert sort: bounds = ({minx:.2f}, {miny:.2f}) to ({maxx:.2f}, {maxy:.2f})")
+
+    t0 = time.time()
+    conn = duckdb.connect()
+    conn.execute("INSTALL spatial; LOAD spatial;")
+    conn.register('coords', coords_df)
+    if verbose:
+        print(f"    Hilbert sort: DuckDB setup ({time.time() - t0:.1f}s)")
 
     # Compute Hilbert indices and sort
+    if verbose:
+        print(f"    Hilbert sort: computing indices for {row_count:,} rows (this may take several minutes)...")
+    t0 = time.time()
     sorted_order = conn.execute(f"""
         SELECT orig_idx,
                ST_Hilbert(lon, lat,
@@ -324,9 +383,18 @@ def _apply_hilbert_sorting(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         ORDER BY hilbert_idx
     """).fetchdf()
     conn.close()
+    if verbose:
+        print(f"    Hilbert sort: indices computed ({time.time() - t0:.1f}s)")
 
     # Reorder GeoDataFrame
-    return gdf.iloc[sorted_order['orig_idx'].values].reset_index(drop=True)
+    if verbose:
+        print(f"    Hilbert sort: reordering GeoDataFrame...")
+    t0 = time.time()
+    result = gdf.iloc[sorted_order['orig_idx'].values].reset_index(drop=True)
+    if verbose:
+        print(f"    Hilbert sort: complete ({time.time() - t0:.1f}s)")
+
+    return result
 
 
 def convert_bedmap_csv(
@@ -356,18 +424,22 @@ def convert_bedmap_csv(
         Dictionary containing metadata and bounds information
     """
     from shapely.geometry import Point
+    import time
 
     csv_path = Path(csv_path)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    total_start = time.time()
     print(f"Converting {csv_path.name}...")
 
     # Parse metadata from header
     metadata = parse_bedmap_metadata(csv_path)
 
-    # Read CSV data
-    df = pd.read_csv(csv_path, comment='#')
+    # Read CSV data using pyarrow for better performance on large files
+    t0 = time.time()
+    df = _read_csv_fast(csv_path)
+    print(f"  Read {len(df):,} rows ({time.time() - t0:.1f}s)")
 
     # Convert trajectory_id to string (it may be numeric in some files)
     df['trajectory_id'] = df['trajectory_id'].astype(str)
@@ -424,6 +496,7 @@ def convert_bedmap_csv(
     }
 
     # Create Point geometry from lon/lat columns (already normalized above)
+    t0 = time.time()
     geometry = [
         Point(lon, lat) for lon, lat in
         zip(df['longitude (degree_east)'], df['latitude (degree_north)'])
@@ -436,6 +509,7 @@ def convert_bedmap_csv(
         geometry=geometry,
         crs='EPSG:4326'
     )
+    print(f"  Created GeoDataFrame ({time.time() - t0:.1f}s)")
 
     # Determine if Hilbert sorting is needed based on row count
     row_count = len(gdf)
@@ -452,13 +526,14 @@ def convert_bedmap_csv(
     output_path = output_dir / f"{source_name}.parquet"
 
     # Write as GeoParquet with zstd compression
+    t0 = time.time()
     write_kwargs = {'compression': 'zstd'}
     if row_group_size is not None:
         write_kwargs['row_group_size'] = row_group_size
 
     gdf.to_parquet(output_path, **write_kwargs)
+    print(f"  Written to {output_path} ({time.time() - t0:.1f}s)")
 
-    print(f"  Written to {output_path}")
     print(f"  Rows: {row_count:,}")
     if use_hilbert:
         print(f"  Row groups: {row_group_size:,} rows each")
@@ -466,6 +541,9 @@ def convert_bedmap_csv(
         print(f"  Spatial extent: {bbox[0]:.2f}, {bbox[1]:.2f} to {bbox[2]:.2f}, {bbox[3]:.2f}")
     if temporal_start and temporal_end:
         print(f"  Temporal extent: {temporal_start.date()} to {temporal_end.date()}")
+
+    total_time = time.time() - total_start
+    print(f"  Total conversion time: {total_time:.1f}s")
 
     return file_metadata
 
