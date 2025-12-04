@@ -436,3 +436,183 @@ def query_bedmap_local(
         return gpd.GeoDataFrame(result_df, geometry=geometry_col, crs='EPSG:4326')
 
     return gpd.GeoDataFrame(result_df)
+
+
+def build_duckdb_query_geoparquet(
+    parquet_urls: List[str],
+    geometry: Optional[shapely.geometry.base.BaseGeometry] = None,
+    date_range: Optional[Tuple[datetime, datetime]] = None,
+    columns: Optional[List[str]] = None,
+    max_rows: Optional[int] = None,
+    use_polar_filter: bool = True
+) -> str:
+    """
+    Build DuckDB SQL query for GeoParquet files with WKB geometry.
+
+    Uses DuckDB spatial extension functions (ST_X, ST_Y) to extract
+    coordinates from WKB-encoded Point geometry.
+
+    Parameters
+    ----------
+    parquet_urls : list of str
+        URLs/paths to GeoParquet files
+    geometry : shapely geometry, optional
+        Spatial filter
+    date_range : tuple of datetime, optional
+        Temporal filter
+    columns : list of str, optional
+        Columns to select (geometry is always included)
+    max_rows : int, optional
+        Limit number of rows
+    use_polar_filter : bool, default True
+        Use Antarctic Polar Stereographic projection for spatial filtering.
+
+    Returns
+    -------
+    str
+        DuckDB SQL query string
+    """
+    # Build FROM clause
+    if len(parquet_urls) == 1:
+        from_clause = f"read_parquet('{parquet_urls[0]}')"
+    else:
+        unions = [f"SELECT * FROM read_parquet('{url}')" for url in parquet_urls]
+        from_clause = f"({' UNION ALL '.join(unions)})"
+
+    # Build SELECT clause - add lon/lat extraction from geometry
+    if columns:
+        # Always include geometry for coordinate extraction
+        col_list = [f'"{col}"' for col in columns if col not in ('lon', 'lat', 'geometry')]
+        col_list.append('geometry')
+        col_list.append('ST_X(geometry) as lon')
+        col_list.append('ST_Y(geometry) as lat')
+        select_clause = ', '.join(col_list)
+    else:
+        select_clause = '*, ST_X(geometry) as lon, ST_Y(geometry) as lat'
+
+    # Build WHERE clause
+    where_conditions = []
+
+    if geometry:
+        crosses_am = _crosses_antimeridian(geometry)
+
+        if use_polar_filter or crosses_am:
+            polar_bounds = get_polar_bounds(geometry)
+            if polar_bounds:
+                # Convert polar filter to use ST_X/ST_Y
+                polar_filter = _build_polar_sql_filter_geoparquet(polar_bounds)
+                where_conditions.append(polar_filter)
+        else:
+            bounds = geometry.bounds
+            where_conditions.append(
+                f'ST_X(geometry) >= {bounds[0]} AND '
+                f'ST_X(geometry) <= {bounds[2]} AND '
+                f'ST_Y(geometry) >= {bounds[1]} AND '
+                f'ST_Y(geometry) <= {bounds[3]}'
+            )
+
+    if date_range:
+        start_date, end_date = date_range
+        where_conditions.append(
+            f"timestamp >= '{start_date.isoformat()}' AND "
+            f"timestamp <= '{end_date.isoformat()}'"
+        )
+
+    where_clause = ' WHERE ' + ' AND '.join(where_conditions) if where_conditions else ''
+    limit_clause = f' LIMIT {max_rows}' if max_rows else ''
+
+    return f"SELECT {select_clause} FROM {from_clause}{where_clause}{limit_clause}"
+
+
+def _build_polar_sql_filter_geoparquet(polar_bounds: Tuple[float, float, float, float]) -> str:
+    """
+    Build SQL filter for GeoParquet using polar stereographic projection.
+
+    Same as _build_polar_sql_filter but uses ST_X/ST_Y instead of column names.
+
+    Parameters
+    ----------
+    polar_bounds : tuple
+        (min_x, min_y, max_x, max_y) in EPSG:3031 coordinates
+
+    Returns
+    -------
+    str
+        SQL WHERE clause fragment
+    """
+    min_x, min_y, max_x, max_y = polar_bounds
+
+    # Spherical approximation of Antarctic Polar Stereographic
+    polar_sql = f"""
+    (6371000.0 * 2 * tan(radians(45 + ST_Y(geometry)/2)) * sin(radians(ST_X(geometry)))) >= {min_x} AND
+    (6371000.0 * 2 * tan(radians(45 + ST_Y(geometry)/2)) * sin(radians(ST_X(geometry)))) <= {max_x} AND
+    (-6371000.0 * 2 * tan(radians(45 + ST_Y(geometry)/2)) * cos(radians(ST_X(geometry)))) >= {min_y} AND
+    (-6371000.0 * 2 * tan(radians(45 + ST_Y(geometry)/2)) * cos(radians(ST_X(geometry)))) <= {max_y}
+    """
+    return polar_sql.strip()
+
+
+def query_geoparquet_spatial(
+    parquet_path: Union[str, Path],
+    geometry: Optional[shapely.geometry.base.BaseGeometry] = None,
+    date_range: Optional[Tuple[datetime, datetime]] = None,
+    columns: Optional[List[str]] = None,
+    max_rows: Optional[int] = None,
+) -> gpd.GeoDataFrame:
+    """
+    Query GeoParquet files with WKB Point geometry using DuckDB spatial extension.
+
+    Parameters
+    ----------
+    parquet_path : str or Path
+        Path to GeoParquet file or directory
+    geometry : shapely geometry, optional
+        Spatial filter geometry
+    date_range : tuple of datetime, optional
+        Temporal filter (start, end)
+    columns : list of str, optional
+        Columns to select
+    max_rows : int, optional
+        Limit number of rows
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        Query results with geometry column
+    """
+    parquet_path = Path(parquet_path)
+
+    if parquet_path.is_dir():
+        parquet_files = list(parquet_path.glob('*.parquet'))
+    else:
+        parquet_files = [parquet_path]
+
+    if not parquet_files:
+        return gpd.GeoDataFrame()
+
+    parquet_urls = [str(f) for f in parquet_files]
+
+    query = build_duckdb_query_geoparquet(
+        parquet_urls=parquet_urls,
+        geometry=geometry,
+        date_range=date_range,
+        columns=columns,
+        max_rows=max_rows,
+    )
+
+    conn = duckdb.connect()
+    try:
+        # Load spatial extension for ST_X/ST_Y functions
+        conn.execute("INSTALL spatial; LOAD spatial;")
+        result_df = conn.execute(query).df()
+    finally:
+        conn.close()
+
+    if result_df.empty:
+        return gpd.GeoDataFrame()
+
+    # Geometry is already in WKB format, convert to GeoDataFrame
+    if 'geometry' in result_df.columns:
+        return gpd.GeoDataFrame(result_df, geometry='geometry', crs='EPSG:4326')
+
+    return gpd.GeoDataFrame(result_df)

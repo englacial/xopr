@@ -394,6 +394,174 @@ def convert_bedmap_csv(
     return file_metadata
 
 
+def convert_bedmap_csv_geoparquet(
+    csv_path: Union[str, Path],
+    output_dir: Union[str, Path],
+    simplify_tolerance_deg: float = 0.01,
+    compression: str = 'snappy',
+    use_hilbert: bool = False,
+    row_group_size: Optional[int] = None,
+) -> Dict:
+    """
+    Convert a single bedmap CSV file to GeoParquet with WKB Point geometry.
+
+    This version stores coordinates as WKB-encoded Point geometry instead of
+    separate lat/lon columns, making it a true GeoParquet file.
+
+    Parameters
+    ----------
+    csv_path : str or Path
+        Path to the input CSV file
+    output_dir : str or Path
+        Directory for output GeoParquet file
+    simplify_tolerance_deg : float
+        Tolerance for geometry simplification in degrees
+    compression : str
+        Compression algorithm ('snappy', 'zstd')
+    use_hilbert : bool
+        Whether to sort points by Hilbert curve for better spatial locality
+    row_group_size : int, optional
+        Number of rows per row group. If None, uses default (all rows in one group).
+        Smaller values enable better predicate pushdown for spatial queries.
+
+    Returns
+    -------
+    dict
+        Dictionary containing metadata and bounds information
+    """
+    from shapely.geometry import Point
+
+    csv_path = Path(csv_path)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Parse metadata from header
+    metadata = parse_bedmap_metadata(csv_path)
+
+    # Read CSV data
+    df = pd.read_csv(csv_path, comment='#')
+
+    # Convert trajectory_id to string
+    df['trajectory_id'] = df['trajectory_id'].astype(str)
+
+    # Replace -9999 with NaN for numeric columns
+    numeric_columns = df.select_dtypes(include=[np.number]).columns
+    for col in numeric_columns:
+        df[col] = df[col].replace(-9999, np.nan)
+
+    # Handle date/time conversion
+    df['timestamp'] = create_timestamps(df, metadata)
+
+    # Add source_file column
+    source_name = csv_path.stem
+    df['source_file'] = source_name
+
+    # Extract flight line geometry for metadata
+    multiline_geom = extract_flight_lines(df)
+    if multiline_geom is not None:
+        simplified_geom = simplify_multiline_geometry(
+            multiline_geom, tolerance_deg=simplify_tolerance_deg
+        )
+    else:
+        simplified_geom = None
+
+    # Calculate spatial bounds
+    bbox = calculate_bbox(df)
+
+    # Extract temporal extent
+    temporal_start, temporal_end = extract_temporal_extent(df, metadata)
+
+    # Create Point geometry from lat/lon
+    lon_col = 'longitude (degree_east)'
+    lat_col = 'latitude (degree_north)'
+    geometry = gpd.points_from_xy(df[lon_col], df[lat_col])
+
+    # Select columns for output (excluding lat/lon since they're in geometry)
+    columns_to_keep = [
+        'trajectory_id', 'trace_number', 'timestamp',
+        'surface_altitude (m)', 'land_ice_thickness (m)', 'bedrock_altitude (m)',
+        'two_way_travel_time (m)', 'aircraft_altitude (m)',
+        'along_track_distance (m)', 'source_file'
+    ]
+    # Filter to columns that exist
+    columns_to_keep = [c for c in columns_to_keep if c in df.columns]
+
+    # Create GeoDataFrame
+    gdf = gpd.GeoDataFrame(
+        df[columns_to_keep],
+        geometry=geometry,
+        crs='EPSG:4326'
+    )
+
+    # Optional: sort by Hilbert curve for spatial locality
+    if use_hilbert:
+        try:
+            import duckdb
+            # Use DuckDB to compute Hilbert values and sort
+            # First, extract coordinates from geometry as regular columns
+            coords_df = pd.DataFrame({
+                'lon': gdf.geometry.x,
+                'lat': gdf.geometry.y,
+            })
+            # Add index to preserve row matching
+            coords_df['orig_idx'] = range(len(coords_df))
+
+            conn = duckdb.connect()
+            conn.execute("INSTALL spatial; LOAD spatial;")
+            conn.register('coords', coords_df)
+
+            # Get bounds for Hilbert computation
+            minx, miny, maxx, maxy = gdf.total_bounds
+
+            # Compute Hilbert index using ST_Hilbert with bounding box
+            # ST_Hilbert(x, y, box) encodes coordinates relative to the box
+            # Need to cast to BOX_2D explicitly
+            sorted_order = conn.execute(f"""
+                SELECT orig_idx,
+                       ST_Hilbert(lon, lat,
+                           {{'min_x': {minx}, 'min_y': {miny}, 'max_x': {maxx}, 'max_y': {maxy}}}::BOX_2D
+                       ) as hilbert_idx
+                FROM coords
+                ORDER BY hilbert_idx
+            """).fetchdf()
+
+            conn.close()
+
+            # Reorder the GeoDataFrame
+            gdf = gdf.iloc[sorted_order['orig_idx'].values].reset_index(drop=True)
+
+        except Exception as e:
+            warnings.warn(f"Hilbert sorting failed, using original order: {e}")
+
+    # Prepare metadata dictionary
+    file_metadata = {
+        'source_csv': csv_path.name,
+        'bedmap_version': _extract_bedmap_version(csv_path.name),
+        'spatial_bounds': {
+            'bbox': bbox,
+            'geometry': simplified_geom.wkt if simplified_geom else None,
+        },
+        'temporal_bounds': {
+            'start': temporal_start.isoformat() if temporal_start else None,
+            'end': temporal_end.isoformat() if temporal_end else None,
+        },
+        'row_count': len(gdf),
+        'original_metadata': metadata,
+        'format': 'geoparquet_wkb',
+    }
+
+    # Output path
+    output_path = output_dir / f"{source_name}.parquet"
+
+    # Write as GeoParquet (GeoPandas handles WKB encoding automatically)
+    write_kwargs = {'compression': compression}
+    if row_group_size is not None:
+        write_kwargs['row_group_size'] = row_group_size
+    gdf.to_parquet(output_path, **write_kwargs)
+
+    return file_metadata
+
+
 def _extract_bedmap_version(filename: str) -> str:
     """
     Extract bedmap version from filename.
