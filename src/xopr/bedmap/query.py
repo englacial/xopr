@@ -2,7 +2,8 @@
 Query interface for bedmap data.
 
 This module provides functions to query and retrieve bedmap data efficiently
-using GeoParquet STAC catalogs and DuckDB for partial reads from cloud-optimized files.
+using rustac for STAC catalog searches and DuckDB for partial reads from
+cloud-optimized GeoParquet files.
 """
 
 import duckdb
@@ -13,8 +14,10 @@ from datetime import datetime
 from pathlib import Path
 import warnings
 
+import antimeridian
 import shapely
 from shapely.geometry import shape
+from rustac import DuckdbClient
 
 from .geometry import (
     check_intersects_polar,
@@ -183,19 +186,26 @@ def build_duckdb_query(
 
 
 def query_bedmap_catalog(
-    catalog_path: str = 'gs://opr_stac/bedmap/',
+    catalog_path: str = 'gs://opr_stac/bedmap/**/*.parquet',
     collections: Optional[List[str]] = None,
     geometry: Optional[shapely.geometry.base.BaseGeometry] = None,
     date_range: Optional[Tuple[datetime, datetime]] = None,
-    properties: Optional[Dict] = None
+    properties: Optional[Dict] = None,
+    max_items: Optional[int] = None,
+    exclude_geometry: bool = False,
 ) -> gpd.GeoDataFrame:
     """
-    Query GeoParquet STAC catalogs for matching bedmap items.
+    Query GeoParquet STAC catalogs for matching bedmap items using rustac.
+
+    This function uses rustac's DuckdbClient to perform efficient spatial queries
+    on cloud-hosted STAC GeoParquet catalogs, following the same pattern as
+    OPRConnection.query_frames().
 
     Parameters
     ----------
     catalog_path : str
-        Base path to GeoParquet catalog files (local or cloud)
+        Glob pattern to GeoParquet catalog files (local or cloud).
+        Default: 'gs://opr_stac/bedmap/**/*.parquet'
     collections : list of str, optional
         Filter by bedmap version (e.g., ['bedmap1', 'bedmap2', 'bedmap3'])
     geometry : shapely geometry, optional
@@ -203,74 +213,113 @@ def query_bedmap_catalog(
     date_range : tuple of datetime, optional
         Temporal filter (start_date, end_date)
     properties : dict, optional
-        Additional property filters (e.g., {'institution': 'AWI'})
+        Additional property filters using CQL2 (e.g., {'institution': 'AWI'})
+    max_items : int, optional
+        Maximum number of items to return
+    exclude_geometry : bool, default False
+        If True, exclude geometry column from results
 
     Returns
     -------
     geopandas.GeoDataFrame
         Matching catalog items with asset_href for data access
     """
-    # Default to all collections
-    if collections is None:
-        collections = ['bedmap1', 'bedmap2', 'bedmap3']
+    search_params = {}
 
-    all_items = []
+    # Exclude geometry
+    if exclude_geometry:
+        search_params['exclude'] = ['geometry']
 
-    for collection in collections:
-        # Build catalog file path
-        if catalog_path.startswith(('gs://', 's3://', 'http')):
-            catalog_file = f"{catalog_path.rstrip('/')}/{collection}.parquet"
+    # Handle collections (bedmap versions)
+    if collections is not None:
+        # Map collection names to their catalog patterns
+        collection_list = [collections] if isinstance(collections, str) else collections
+        search_params['collections'] = collection_list
+
+    # Handle geometry filtering
+    if geometry is not None:
+        if hasattr(geometry, '__geo_interface__'):
+            geom_dict = geometry.__geo_interface__
         else:
-            catalog_file = Path(catalog_path) / f"{collection}.parquet"
-            if not catalog_file.exists():
-                continue
-            catalog_file = str(catalog_file)
+            geom_dict = geometry
 
-        # Try to load catalog
-        try:
-            gdf = gpd.read_parquet(catalog_file)
-        except Exception as e:
-            warnings.warn(f"Could not load catalog {catalog_file}: {e}")
-            continue
+        # Fix geometries that cross the antimeridian
+        geom_dict = antimeridian.fix_geojson(geom_dict, reverse=True)
 
-        if gdf.empty:
-            continue
+        search_params['intersects'] = geom_dict
 
-        # Spatial filter using polar projection
-        if geometry is not None:
-            mask = gdf.geometry.apply(
-                lambda g: check_intersects_polar(geometry, g) if g is not None else False
-            )
-            gdf = gdf[mask]
+    # Handle date range filtering
+    if date_range is not None:
+        search_params['datetime'] = date_range
 
-        # Temporal filter
-        if date_range and 'temporal_start' in gdf.columns:
-            start_filter, end_filter = date_range
+    # Handle max_items
+    if max_items is not None:
+        search_params['limit'] = max_items
+    else:
+        search_params['limit'] = 1000000
 
-            # Parse temporal columns
-            temporal_start = gpd.pd.to_datetime(gdf['temporal_start'], errors='coerce')
-            temporal_end = gpd.pd.to_datetime(gdf['temporal_end'], errors='coerce')
+    # Handle property filters using CQL2
+    filter_conditions = []
 
-            # Filter by overlap
-            mask = ~((temporal_end < start_filter) | (temporal_start > end_filter))
-            gdf = gdf[mask]
+    if properties:
+        for key, value in properties.items():
+            if isinstance(value, list):
+                # Create OR conditions for multiple values
+                value_conditions = []
+                for v in value:
+                    value_conditions.append({
+                        "op": "=",
+                        "args": [{"property": key}, v]
+                    })
+                if len(value_conditions) == 1:
+                    filter_conditions.append(value_conditions[0])
+                else:
+                    filter_conditions.append({
+                        "op": "or",
+                        "args": value_conditions
+                    })
+            else:
+                filter_conditions.append({
+                    "op": "=",
+                    "args": [{"property": key}, value]
+                })
 
-        # Property filters
-        if properties:
-            for key, value in properties.items():
-                if key in gdf.columns:
-                    if isinstance(value, list):
-                        gdf = gdf[gdf[key].isin(value)]
-                    else:
-                        gdf = gdf[gdf[key] == value]
+    # Combine all filter conditions with AND
+    if filter_conditions:
+        if len(filter_conditions) == 1:
+            filter_expr = filter_conditions[0]
+        else:
+            filter_expr = {
+                "op": "and",
+                "args": filter_conditions
+            }
+        search_params['filter'] = filter_expr
 
-        if not gdf.empty:
-            all_items.append(gdf)
+    # Perform the search using rustac
+    client = DuckdbClient()
+    items = client.search(catalog_path, **search_params)
 
-    if not all_items:
+    if isinstance(items, dict):
+        items = items['features']
+
+    if not items or len(items) == 0:
+        warnings.warn("No items found matching the query criteria", UserWarning)
         return gpd.GeoDataFrame()
 
-    return gpd.pd.concat(all_items, ignore_index=True)
+    # Convert to GeoDataFrame
+    items_df = gpd.GeoDataFrame(items)
+
+    # Set index
+    if 'id' in items_df.columns:
+        items_df = items_df.set_index(items_df['id'])
+        items_df.index.name = 'stac_item_id'
+
+    # Set the geometry column
+    if 'geometry' in items_df.columns and not exclude_geometry:
+        items_df = items_df.set_geometry(items_df['geometry'].apply(shapely.geometry.shape))
+        items_df.crs = "EPSG:4326"
+
+    return items_df
 
 
 def query_bedmap(
@@ -280,14 +329,14 @@ def query_bedmap(
     properties: Optional[Dict] = None,
     max_rows: Optional[int] = None,
     columns: Optional[List[str]] = None,
-    catalog_path: str = 'gs://opr_stac/bedmap/',
+    catalog_path: str = 'gs://opr_stac/bedmap/**/*.parquet',
     exclude_geometry: bool = True
 ) -> gpd.GeoDataFrame:
     """
     Query bedmap data from GeoParquet catalogs and return filtered data.
 
     This function:
-    1. Queries the GeoParquet STAC catalogs to find matching data files
+    1. Uses rustac to query the STAC GeoParquet catalogs for matching items
     2. Uses DuckDB for efficient partial reads with spatial/temporal filtering
     3. Returns a GeoDataFrame with the requested data
 
@@ -306,7 +355,7 @@ def query_bedmap(
     columns : list of str, optional
         Specific columns to retrieve
     catalog_path : str
-        Base path to GeoParquet catalog files
+        Glob pattern to GeoParquet catalog files
     exclude_geometry : bool, default True
         If True, don't create geometry column (keeps lat/lon as separate columns)
 
@@ -325,7 +374,7 @@ def query_bedmap(
     ...     collections=['bedmap2']
     ... )
     """
-    # Query catalog for matching items
+    # Query catalog for matching items using rustac
     catalog_items = query_bedmap_catalog(
         catalog_path=catalog_path,
         collections=collections,
@@ -340,12 +389,37 @@ def query_bedmap(
 
     print(f"Found {len(catalog_items)} matching files in catalog")
 
-    # Get data file URLs
-    if 'asset_href' not in catalog_items.columns:
-        warnings.warn("No asset_href column in catalog items")
-        return gpd.GeoDataFrame()
+    # Get data file URLs from the catalog items
+    # The rustac STAC GeoParquet format stores asset_href in the properties dict
+    parquet_urls = []
+    for idx, item in catalog_items.iterrows():
+        # Primary: check properties dict for asset_href
+        if 'properties' in item and isinstance(item['properties'], dict):
+            props = item['properties']
+            if 'asset_href' in props and props['asset_href']:
+                parquet_urls.append(props['asset_href'])
+                continue
 
-    parquet_urls = catalog_items['asset_href'].tolist()
+        # Fallback: check for assets dict (standard STAC structure)
+        if 'assets' in item and item['assets']:
+            assets = item['assets']
+            if isinstance(assets, dict):
+                for asset_key, asset_info in assets.items():
+                    if isinstance(asset_info, dict) and 'href' in asset_info:
+                        parquet_urls.append(asset_info['href'])
+                        break
+                    elif isinstance(asset_info, str):
+                        parquet_urls.append(asset_info)
+                        break
+
+        # Final fallback: check for asset_href column directly
+        if 'asset_href' in catalog_items.columns:
+            if item.get('asset_href'):
+                parquet_urls.append(item['asset_href'])
+
+    if not parquet_urls:
+        warnings.warn("No asset URLs found in catalog items")
+        return gpd.GeoDataFrame()
 
     # Build and execute DuckDB query
     print(f"Querying {len(parquet_urls)} GeoParquet files...")
