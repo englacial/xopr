@@ -137,36 +137,69 @@ def extract_flight_lines(
 
 def simplify_multiline_geometry(
     geometry: MultiLineString,
-    tolerance_deg: float = 0.01,
-    preserve_topology: bool = True
+    tolerance_km: float = 10.0,
+    preserve_topology: bool = False
 ) -> MultiLineString:
     """
     Simplify multiline geometry to reduce storage size.
 
+    Uses vectorized pyproj transformation to Antarctic Polar Stereographic
+    (EPSG:3031) for simplification, avoiding slow coordinate-by-coordinate
+    iteration.
+
     Parameters
     ----------
     geometry : MultiLineString
-        Input multiline geometry to simplify
-    tolerance_deg : float
-        Simplification tolerance in degrees
+        Input multiline geometry to simplify (WGS84)
+    tolerance_km : float
+        Simplification tolerance in kilometers
     preserve_topology : bool
         Whether to preserve topology during simplification
 
     Returns
     -------
     MultiLineString
-        Simplified multiline geometry
+        Simplified multiline geometry (WGS84)
     """
     if geometry is None or geometry.is_empty:
         return geometry
 
-    simplified = geometry.simplify(tolerance_deg, preserve_topology=preserve_topology)
+    tolerance_m = tolerance_km * 1000
 
-    # Ensure we still have a MultiLineString
-    if isinstance(simplified, LineString):
-        simplified = MultiLineString([simplified])
+    # Process each line segment with vectorized transformation
+    simplified_lines = []
+    for line in geometry.geoms:
+        coords = np.array(line.coords)
+        if len(coords) < 2:
+            continue
 
-    return simplified
+        # Vectorized transform to polar (lon, lat -> x, y)
+        lons, lats = coords[:, 0], coords[:, 1]
+        x, y = _transformer_to_polar.transform(lons, lats)
+
+        # Build polar LineString and simplify
+        polar_line = LineString(zip(x, y))
+        simplified_polar = polar_line.simplify(tolerance_m, preserve_topology=preserve_topology)
+
+        if simplified_polar.is_empty:
+            continue
+
+        # Vectorized transform back to WGS84
+        polar_coords = np.array(simplified_polar.coords)
+        px, py = polar_coords[:, 0], polar_coords[:, 1]
+        result_lons, result_lats = _transformer_from_polar.transform(px, py)
+
+        result_line = LineString(zip(result_lons, result_lats))
+        if result_line.is_valid and not result_line.is_empty:
+            simplified_lines.append(result_line)
+
+    if not simplified_lines:
+        return None
+
+    if len(simplified_lines) == 1:
+        return MultiLineString([simplified_lines[0]])
+
+    return MultiLineString(simplified_lines)
 
 
 def calculate_bbox(
