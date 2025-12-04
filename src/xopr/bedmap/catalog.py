@@ -12,12 +12,17 @@ import warnings
 
 import pyarrow.parquet as pq
 import geopandas as gpd
-from shapely import wkt
+import pandas as pd
+from shapely import wkb, wkt
+from shapely.geometry import MultiLineString, LineString
 
 
 def read_parquet_metadata(parquet_path: Union[str, Path]) -> Dict:
     """
-    Read metadata from a GeoParquet file.
+    Read bedmap metadata from a GeoParquet file's schema metadata.
+
+    The metadata includes the flight line geometry as WKB hex string,
+    spatial bounds, temporal bounds, and other file metadata.
 
     Parameters
     ----------
@@ -27,19 +32,33 @@ def read_parquet_metadata(parquet_path: Union[str, Path]) -> Dict:
     Returns
     -------
     dict
-        Metadata dictionary from the parquet file
+        Metadata dictionary from the parquet file, with 'flight_line_geometry'
+        key containing the deserialized shapely geometry object
     """
     parquet_file = pq.ParquetFile(parquet_path)
 
-    # Get metadata from parquet schema (use schema_arrow for Arrow schema with metadata)
+    # Get metadata from parquet schema
     schema_metadata = parquet_file.schema_arrow.metadata or {}
     metadata_bytes = schema_metadata.get(b'bedmap_metadata')
 
-    if metadata_bytes:
-        return json.loads(metadata_bytes.decode())
-    else:
-        warnings.warn(f"No bedmap metadata found in {parquet_path}")
+    if not metadata_bytes:
+        warnings.warn(f"No bedmap_metadata found in {parquet_path}")
         return {}
+
+    metadata = json.loads(metadata_bytes.decode())
+
+    # Convert WKB hex string back to shapely geometry
+    wkb_hex = metadata.get('flight_line_wkb')
+    if wkb_hex:
+        try:
+            metadata['flight_line_geometry'] = wkb.loads(wkb_hex, hex=True)
+        except Exception as e:
+            warnings.warn(f"Could not parse WKB geometry: {e}")
+            metadata['flight_line_geometry'] = None
+    else:
+        metadata['flight_line_geometry'] = None
+
+    return metadata
 
 
 def build_bedmap_geoparquet_catalog(
@@ -94,27 +113,35 @@ def build_bedmap_geoparquet_catalog(
     for parquet_file in parquet_files:
         print(f"  Processing {parquet_file.name}...")
 
-        # Read metadata
-        metadata = read_parquet_metadata(parquet_file)
+        # Read metadata (will extract from file contents if not embedded)
+        try:
+            metadata = read_parquet_metadata(parquet_file)
+        except Exception as e:
+            print(f"    Warning: Failed to read metadata: {e}")
+            continue
+
         if not metadata:
             print(f"    Warning: No metadata found, skipping")
             continue
 
-        # Extract geometry from metadata
+        # Get geometry - may be object or WKT string
+        geometry = metadata.get('flight_line_geometry')
         spatial_bounds = metadata.get('spatial_bounds', {})
-        geometry_wkt = spatial_bounds.get('geometry')
         bbox = spatial_bounds.get('bbox')
 
-        if geometry_wkt:
-            try:
-                geometry = wkt.loads(geometry_wkt)
-                # Simplify for visualization
-                geometry = geometry.simplify(simplify_tolerance, preserve_topology=True)
-            except Exception as e:
-                print(f"    Warning: Could not parse geometry: {e}")
-                geometry = None
-        else:
-            geometry = None
+        if geometry is None:
+            # Try loading from WKT
+            geometry_wkt = spatial_bounds.get('geometry')
+            if geometry_wkt:
+                try:
+                    geometry = wkt.loads(geometry_wkt)
+                except Exception as e:
+                    print(f"    Warning: Could not parse geometry: {e}")
+                    geometry = None
+
+        # Simplify geometry for visualization
+        if geometry is not None:
+            geometry = geometry.simplify(simplify_tolerance, preserve_topology=True)
 
         if geometry is None:
             print(f"    Warning: No geometry, skipping")

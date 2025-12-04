@@ -657,7 +657,7 @@ class TestCatalog:
             gdf.to_parquet(parquet_path)
 
             # Should return empty dict and warn
-            with pytest.warns(UserWarning, match="No bedmap metadata"):
+            with pytest.warns(UserWarning, match="No bedmap_metadata"):
                 result = read_parquet_metadata(parquet_path)
 
             assert result == {}

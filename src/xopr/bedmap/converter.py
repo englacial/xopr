@@ -9,10 +9,13 @@ This module handles:
 - Extracting spatial and temporal bounds
 """
 
+import json
 import pandas as pd
 import numpy as np
 import geopandas as gpd
+import pyarrow as pa
 import pyarrow.csv as pa_csv
+import pyarrow.parquet as pq
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List, Union
 from datetime import datetime, timezone
@@ -28,6 +31,57 @@ from .geometry import (
 HILBERT_ROW_THRESHOLD = 600_000
 # Row group size for files with Hilbert sorting
 HILBERT_ROW_GROUP_SIZE = 50_000
+
+
+def _write_geoparquet_with_metadata(
+    gdf: gpd.GeoDataFrame,
+    output_path: Path,
+    bedmap_metadata: Dict,
+    compression: str = 'zstd',
+    row_group_size: Optional[int] = None
+) -> None:
+    """
+    Write GeoDataFrame to GeoParquet with custom bedmap metadata in schema.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        GeoDataFrame to write
+    output_path : Path
+        Output file path
+    bedmap_metadata : dict
+        Metadata to embed in parquet schema (includes flight_line_wkb)
+    compression : str
+        Compression codec
+    row_group_size : int, optional
+        Row group size for parquet file
+    """
+    # First write to a temporary buffer to get the arrow table with geo metadata
+    import io
+    buffer = io.BytesIO()
+    gdf.to_parquet(buffer, compression=compression)
+    buffer.seek(0)
+
+    # Read back as arrow table
+    table = pq.read_table(buffer)
+
+    # Get existing metadata and add bedmap_metadata
+    existing_metadata = table.schema.metadata or {}
+    new_metadata = {
+        **existing_metadata,
+        b'bedmap_metadata': json.dumps(bedmap_metadata).encode('utf-8')
+    }
+
+    # Create new schema with updated metadata
+    new_schema = table.schema.with_metadata(new_metadata)
+    table = table.cast(new_schema)
+
+    # Write with custom row group size if specified
+    write_kwargs = {'compression': compression}
+    if row_group_size is not None:
+        write_kwargs['row_group_size'] = row_group_size
+
+    pq.write_table(table, output_path, **write_kwargs)
 
 
 def _normalize_longitude(lon: np.ndarray) -> np.ndarray:
@@ -479,13 +533,17 @@ def convert_bedmap_csv(
     # Extract temporal extent
     temporal_start, temporal_end = extract_temporal_extent(df, metadata)
 
-    # Prepare metadata dictionary
+    # Convert simplified geometry to WKB hex for storage
+    flight_line_wkb = None
+    if simplified_geom is not None:
+        flight_line_wkb = simplified_geom.wkb_hex
+
+    # Prepare metadata dictionary (will be stored in parquet schema)
     file_metadata = {
         'source_csv': csv_path.name,
         'bedmap_version': _extract_bedmap_version(csv_path.name),
         'spatial_bounds': {
-            'bbox': bbox,
-            'geometry': simplified_geom.wkt if simplified_geom else None,
+            'bbox': list(bbox) if bbox else None,  # Convert tuple to list for JSON
         },
         'temporal_bounds': {
             'start': temporal_start.isoformat() if temporal_start else None,
@@ -493,6 +551,7 @@ def convert_bedmap_csv(
         },
         'row_count': len(df),
         'original_metadata': metadata,
+        'flight_line_wkb': flight_line_wkb,  # WKB hex string for STAC catalog
     }
 
     # Create Point geometry from lon/lat columns (already normalized above)
@@ -525,13 +584,15 @@ def convert_bedmap_csv(
     # Prepare output path
     output_path = output_dir / f"{source_name}.parquet"
 
-    # Write as GeoParquet with zstd compression
+    # Write as GeoParquet with zstd compression and bedmap metadata
     t0 = time.time()
-    write_kwargs = {'compression': 'zstd'}
-    if row_group_size is not None:
-        write_kwargs['row_group_size'] = row_group_size
-
-    gdf.to_parquet(output_path, **write_kwargs)
+    _write_geoparquet_with_metadata(
+        gdf=gdf,
+        output_path=output_path,
+        bedmap_metadata=file_metadata,
+        compression='zstd',
+        row_group_size=row_group_size
+    )
     print(f"  Written to {output_path} ({time.time() - t0:.1f}s)")
 
     print(f"  Rows: {row_count:,}")
