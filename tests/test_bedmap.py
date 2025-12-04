@@ -154,7 +154,7 @@ class TestGeometry:
         line = LineString(coords)
         multiline = MultiLineString([line])
 
-        simplified = simplify_multiline_geometry(multiline, tolerance_deg=0.1)
+        simplified = simplify_multiline_geometry(multiline, tolerance_km=1000)
 
         assert isinstance(simplified, MultiLineString)
         # Should have fewer points after simplification
@@ -1172,7 +1172,7 @@ class TestGeometryAdvanced:
         line = LineString([(0, 0), (1, 1)])
         multiline = MultiLineString([line])
 
-        result = simplify_multiline_geometry(multiline, tolerance_deg=0.001)
+        result = simplify_multiline_geometry(multiline, tolerance_km=1.0)
 
         # Should still be MultiLineString
         assert isinstance(result, MultiLineString)

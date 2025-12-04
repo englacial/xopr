@@ -203,7 +203,7 @@ def parse_date_time_columns(
     time_series: pd.Series
 ) -> pd.Series:
     """
-    Parse date and time columns into timestamps.
+    Parse date and time columns into timestamps (vectorized).
 
     Parameters
     ----------
@@ -217,64 +217,28 @@ def parse_date_time_columns(
     pd.Series
         Series of parsed timestamps
     """
-    timestamps = []
+    # Convert to string series for vectorized operations
+    date_str = date_series.astype(str)
+    time_str = time_series.astype(str)
 
-    for date_val, time_val in zip(date_series, time_series):
-        if pd.isna(date_val) or pd.isna(time_val):
-            timestamps.append(pd.NaT)
-            continue
+    # Combine date and time with 'T' separator for ISO8601 format
+    # Most bedmap files use YYYY-MM-DD and HH:MM:SS formats
+    datetime_str = date_str + 'T' + time_str
 
-        try:
-            # Handle various date formats
-            date_str = str(date_val)
-            time_str = str(time_val)
+    # Try ISO8601 format first (fastest path), fall back to mixed if needed
+    # errors='coerce' converts unparseable values to NaT
+    try:
+        timestamps = pd.to_datetime(datetime_str, format='ISO8601', utc=True)
+    except ValueError:
+        # Fall back to mixed format parsing for non-ISO formats
+        datetime_str_space = date_str + ' ' + time_str
+        timestamps = pd.to_datetime(datetime_str_space, errors='coerce', utc=True, format='mixed')
 
-            # Common formats: YYYYMMDD, YYYY-MM-DD, YYYY/MM/DD
-            if len(date_str) == 8 and date_str.isdigit():
-                # YYYYMMDD format
-                year = int(date_str[:4])
-                month = int(date_str[4:6])
-                day = int(date_str[6:8])
-            elif '-' in date_str:
-                parts = date_str.split('-')
-                year = int(parts[0])
-                month = int(parts[1]) if len(parts) > 1 else 1
-                day = int(parts[2]) if len(parts) > 2 else 1
-            elif '/' in date_str:
-                parts = date_str.split('/')
-                # Could be MM/DD/YYYY or YYYY/MM/DD
-                if len(parts[0]) == 4:
-                    year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
-                else:
-                    month, day, year = int(parts[0]), int(parts[1]), int(parts[2])
-            else:
-                timestamps.append(pd.NaT)
-                continue
+    # Handle NaN inputs - set to NaT where either date or time was missing
+    na_mask = date_series.isna() | time_series.isna()
+    timestamps = timestamps.where(~na_mask, pd.NaT)
 
-            # Parse time (HH:MM:SS or HHMMSS)
-            if ':' in time_str:
-                time_parts = time_str.split(':')
-                hour = int(time_parts[0])
-                minute = int(time_parts[1]) if len(time_parts) > 1 else 0
-                second = int(float(time_parts[2])) if len(time_parts) > 2 else 0
-            elif len(time_str) >= 4 and time_str.replace('.', '').isdigit():
-                # HHMMSS or HHMM format
-                hour = int(time_str[:2])
-                minute = int(time_str[2:4])
-                second = int(time_str[4:6]) if len(time_str) >= 6 else 0
-            else:
-                hour = minute = second = 0
-
-            # Create timestamp
-            timestamp = pd.Timestamp(year=year, month=month, day=day,
-                                      hour=hour, minute=minute, second=second,
-                                      tz=timezone.utc)
-            timestamps.append(timestamp)
-
-        except (ValueError, TypeError) as e:
-            timestamps.append(pd.NaT)
-
-    return pd.Series(timestamps)
+    return timestamps
 
 
 def create_timestamps(df: pd.DataFrame, metadata: Dict) -> pd.Series:
@@ -454,7 +418,7 @@ def _apply_hilbert_sorting(gdf: gpd.GeoDataFrame, verbose: bool = True) -> gpd.G
 def convert_bedmap_csv(
     csv_path: Union[str, Path],
     output_dir: Union[str, Path],
-    simplify_tolerance_deg: float = 0.01,
+    simplify_tolerance_km: float = 10.0,
 ) -> Dict:
     """
     Convert a single bedmap CSV file to cloud-optimized GeoParquet format.
@@ -469,15 +433,15 @@ def convert_bedmap_csv(
         Path to the input CSV file
     output_dir : str or Path
         Directory for output GeoParquet file
-    simplify_tolerance_deg : float
-        Tolerance for geometry simplification in degrees
+    simplify_tolerance_km : float
+        Tolerance for geometry simplification in kilometers (uses polar
+        stereographic projection to avoid distortion near poles)
 
     Returns
     -------
     dict
         Dictionary containing metadata and bounds information
     """
-    from shapely.geometry import Point
     import time
 
     csv_path = Path(csv_path)
@@ -521,7 +485,7 @@ def convert_bedmap_csv(
     if multiline_geom is not None:
         simplified_geom = simplify_multiline_geometry(
             multiline_geom,
-            tolerance_deg=simplify_tolerance_deg
+            tolerance_km=simplify_tolerance_km
         )
     else:
         simplified_geom = None
@@ -554,12 +518,12 @@ def convert_bedmap_csv(
         'flight_line_wkb': flight_line_wkb,  # WKB hex string for STAC catalog
     }
 
-    # Create Point geometry from lon/lat columns (already normalized above)
+    # Create Point geometry from lon/lat columns (vectorized for performance)
     t0 = time.time()
-    geometry = [
-        Point(lon, lat) for lon, lat in
-        zip(df['longitude (degree_east)'], df['latitude (degree_north)'])
-    ]
+    geometry = gpd.points_from_xy(
+        df['longitude (degree_east)'],
+        df['latitude (degree_north)']
+    )
 
     # Create GeoDataFrame with WKB Point geometry
     gdf = gpd.GeoDataFrame(
