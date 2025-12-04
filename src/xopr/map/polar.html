@@ -552,7 +552,9 @@
                 const collectionColumn = arrowTable.getChild('collection');
                 const nameColumn = arrowTable.getChild('name');
                 const descriptionColumn = arrowTable.getChild('description');
-                
+
+                console.log(`Arrow table has ${arrowTable.numRows} rows, geometryColumn exists: ${!!geometryColumn}`);
+
                 for (let i = 0; i < arrowTable.numRows; i++) {
                 const wkbData = geometryColumn?.get(i);
                 if (wkbData) {
@@ -563,24 +565,34 @@
                         // Handle Arrow-specific format
                         wkbInput = new Uint8Array(wkbData.toArray());
                     }
-                    
-                    // Use OpenLayers' built-in WKB reader with automatic projection transformation
-                    const olGeometry = wkbFormat.readGeometry(wkbInput, {
-                        dataProjection: 'EPSG:4326',
-                        featureProjection: projConfig.code
-                    });
-                    
-                    if (olGeometry) {
-                        features.push(new ol.Feature({
-                            geometry: olGeometry,
-                            id: idColumn?.get(i) || `feature_${i}`,
-                            collection: collectionColumn?.get(i) || '',
-                            name: nameColumn?.get(i) || `Feature ${i}`,
-                            description: descriptionColumn?.get(i) || '',
-                            source_file: filename,
-                            feature_color: color  // Store the color for this feature
-                        }));
+
+                    console.log(`Row ${i}: wkbInput type=${wkbInput.constructor.name}, length=${wkbInput.length || wkbInput.byteLength || 'unknown'}`);
+
+                    try {
+                        // Use OpenLayers' built-in WKB reader with automatic projection transformation
+                        const olGeometry = wkbFormat.readGeometry(wkbInput, {
+                            dataProjection: 'EPSG:4326',
+                            featureProjection: projConfig.code
+                        });
+
+                        console.log(`Row ${i}: olGeometry type=${olGeometry?.getType()}, valid=${!!olGeometry}`);
+
+                        if (olGeometry) {
+                            features.push(new ol.Feature({
+                                geometry: olGeometry,
+                                id: idColumn?.get(i) || `feature_${i}`,
+                                collection: collectionColumn?.get(i) || '',
+                                name: nameColumn?.get(i) || `Feature ${i}`,
+                                description: descriptionColumn?.get(i) || '',
+                                source_file: filename,
+                                feature_color: color  // Store the color for this feature
+                            }));
+                        }
+                    } catch (geomError) {
+                        console.error(`Row ${i}: WKB parse error:`, geomError);
                     }
+                } else {
+                    console.log(`Row ${i}: wkbData is null/undefined`);
                 }
                 }
                 
@@ -684,13 +696,14 @@
                         const geomType = feature.getGeometry().getType();
                         const isSelected = feature === selectedFeature;
                         const featureColor = feature.get('feature_color') || 'red';
-                        
-                        // Create color styles using the feature's color
-                        const colorStyle = createColorStyle(featureColor, isSelected ? 1.0 : 0.8);
-                        
+
+                        // Use cyan for selected features, otherwise use feature color
+                        const displayColor = isSelected ? 'cyan' : featureColor;
+                        const colorStyle = createColorStyle(displayColor, isSelected ? 1.0 : 0.8);
+
                         const pointRadius = isSelected ? 8 : 6;
                         const lineWidth = isSelected ? 4 : 2;
-                        
+
                         const styles = {
                             'Point': new ol.style.Style({
                                 image: new ol.style.Circle({
@@ -705,7 +718,22 @@
                                     width: lineWidth
                                 })
                             }),
+                            'MultiLineString': new ol.style.Style({
+                                stroke: new ol.style.Stroke({
+                                    color: colorStyle.base,
+                                    width: lineWidth
+                                })
+                            }),
                             'Polygon': new ol.style.Style({
+                                stroke: new ol.style.Stroke({
+                                    color: colorStyle.base,
+                                    width: isSelected ? 3 : 2
+                                }),
+                                fill: new ol.style.Fill({
+                                    color: colorStyle.fill
+                                })
+                            }),
+                            'MultiPolygon': new ol.style.Style({
                                 stroke: new ol.style.Stroke({
                                     color: colorStyle.base,
                                     width: isSelected ? 3 : 2
@@ -715,8 +743,8 @@
                                 })
                             })
                         };
-                        
-                        return styles[geomType] || styles['Point'];
+
+                        return styles[geomType] || styles['LineString'];
                     };
                     
                     const vectorLayer = new ol.layer.Vector({
