@@ -12,19 +12,16 @@ import json
 from datetime import datetime, timezone
 import shapely
 from shapely.geometry import Point, LineString, MultiLineString, box
+import xarray as xr
 
 # Import bedmap modules
 from xopr.bedmap import (
-    # Geometry functions
     calculate_haversine_distances,
     extract_flight_lines,
     simplify_multiline_geometry,
-    # Converter functions
     parse_bedmap_metadata,
     convert_bedmap_csv,
-    # Query functions
     query_bedmap_local,
-    # Comparison functions
     match_bedmap_to_opr,
     compare_with_opr,
 )
@@ -39,6 +36,78 @@ from xopr.bedmap.geometry import (
 )
 from xopr.bedmap.query import build_duckdb_query, _crosses_antimeridian
 
+
+# =============================================================================
+# Pytest Fixtures - Reusable test data
+# =============================================================================
+
+@pytest.fixture
+def sample_bedmap_df():
+    """Sample bedmap-style DataFrame with standard column names."""
+    return pd.DataFrame({
+        'longitude (degree_east)': [-70.0, -70.1, -70.2],
+        'latitude (degree_north)': [-75.0, -75.1, -75.2],
+        'surface_altitude (m)': [1000.0, 1010.0, 1020.0],
+        'land_ice_thickness (m)': [500.0, 510.0, 520.0],
+        'bedrock_altitude (m)': [500.0, 500.0, 500.0],
+    })
+
+
+@pytest.fixture
+def sample_bedmap_gdf(sample_bedmap_df):
+    """Sample bedmap GeoDataFrame with geometry."""
+    return gpd.GeoDataFrame(
+        sample_bedmap_df,
+        geometry=gpd.points_from_xy(
+            sample_bedmap_df['longitude (degree_east)'],
+            sample_bedmap_df['latitude (degree_north)']
+        ),
+        crs='EPSG:4326'
+    )
+
+
+@pytest.fixture
+def sample_opr_dataset():
+    """Sample OPR xarray Dataset for comparison tests."""
+    return xr.Dataset({
+        'Longitude': (('slow_time',), [-70.001, -70.101, -70.201]),
+        'Latitude': (('slow_time',), [-75.001, -75.101, -75.201]),
+        'Surface': (('slow_time',), [1005.0, 1015.0, 1025.0]),
+        'Bottom': (('slow_time',), [505.0, 505.0, 505.0]),
+    })
+
+
+@pytest.fixture
+def west_antarctica_bbox():
+    """Bounding box for West Antarctica region."""
+    return box(-130, -85, -60, -70)
+
+
+@pytest.fixture
+def sample_csv_content():
+    """Standard CSV content for converter tests."""
+    return """#project: Test Project
+#time_coverage_start: 2020
+#time_coverage_end: 2020
+#institution: Test Institution
+trajectory_id,trace_number,longitude (degree_east),latitude (degree_north),date,time_UTC,surface_altitude (m),land_ice_thickness (m),bedrock_altitude (m),two_way_travel_time (m),aircraft_altitude (m),along_track_distance (m)
+1,-9999,-70.0,-75.0,-9999,-9999,1000.0,500.0,500.0,-9999,-9999,-9999
+1,-9999,-70.1,-75.1,-9999,-9999,1010.0,510.0,500.0,-9999,-9999,-9999
+1,-9999,-70.2,-75.2,-9999,-9999,1020.0,520.0,500.0,-9999,-9999,-9999
+"""
+
+
+@pytest.fixture
+def temp_csv_file(tmp_path, sample_csv_content):
+    """Create a temporary CSV file for testing."""
+    csv_path = tmp_path / 'TEST_2020_DATA_BM2.csv'
+    csv_path.write_text(sample_csv_content)
+    return csv_path
+
+
+# =============================================================================
+# Test Classes
+# =============================================================================
 
 class TestGeometry:
     """Test geometry utilities."""
@@ -512,7 +581,6 @@ class TestCompare:
 
     def test_match_bedmap_to_opr(self):
         """Test matching bedmap points to OPR data."""
-        import xarray as xr
 
         # Create test bedmap data
         bedmap = gpd.GeoDataFrame({
@@ -537,7 +605,6 @@ class TestCompare:
 
     def test_compare_with_opr_statistics(self):
         """Test comparison statistics calculation."""
-        import xarray as xr
 
         # Create test data
         bedmap = gpd.GeoDataFrame({
@@ -840,7 +907,6 @@ class TestCompareAdvanced:
 
     def test_match_bedmap_to_opr_with_bottom(self):
         """Test matching with Bottom layer included."""
-        import xarray as xr
 
         bedmap = gpd.GeoDataFrame({
             'longitude (degree_east)': [-70],
@@ -863,7 +929,6 @@ class TestCompareAdvanced:
 
     def test_compare_with_opr_no_statistics(self):
         """Test comparison without computing statistics."""
-        import xarray as xr
 
         bedmap = gpd.GeoDataFrame({
             'longitude (degree_east)': [-70],
@@ -886,7 +951,6 @@ class TestCompareAdvanced:
 
     def test_compare_with_opr_missing_columns(self):
         """Test comparison with missing surface/bed columns."""
-        import xarray as xr
 
         bedmap = gpd.GeoDataFrame({
             'longitude (degree_east)': [-70],
@@ -898,6 +962,169 @@ class TestCompareAdvanced:
             results = compare_with_opr(bedmap)
 
         assert results['matched_data'] is not None
+
+    def test_create_crossover_analysis(self):
+        """Test crossover analysis between bedmap and OPR tracks."""
+        from xopr.bedmap.compare import create_crossover_analysis
+
+        bedmap = gpd.GeoDataFrame({
+            'longitude (degree_east)': [-70, -71],
+            'latitude (degree_north)': [-70, -71],
+            'surface_altitude (m)': [1000, 1100],
+            'bedrock_altitude (m)': [500, 550],
+            'source_file': ['file1', 'file2'],
+        })
+
+        opr_track = xr.Dataset({
+            'Longitude': (('slow_time',), [-70.001, -71.001]),
+            'Latitude': (('slow_time',), [-70.001, -71.001]),
+            'Surface': (('slow_time',), [1005, 1105]),
+            'Bottom': (('slow_time',), [505, 555]),
+        })
+
+        result = create_crossover_analysis(bedmap, [opr_track], crossover_threshold_m=5000)
+
+        assert len(result) == 2
+        assert 'bedmap_id' in result.columns
+        assert 'distance_m' in result.columns
+        assert 'surface_diff' in result.columns
+        assert 'bed_diff' in result.columns
+
+    def test_aggregate_comparisons_by_region(self):
+        """Test aggregating comparison results by region."""
+        from xopr.bedmap.compare import aggregate_comparisons_by_region
+
+        # Create mock comparison results
+        matched_data = gpd.GeoDataFrame({
+            'longitude (degree_east)': [-70, -71, -120],
+            'latitude (degree_north)': [-75, -76, -75],
+            'surface_diff_m': [5, 10, 15],
+            'bed_diff_m': [8, 12, 20],
+        }, geometry=[Point(-70, -75), Point(-71, -76), Point(-120, -75)], crs='EPSG:4326')
+
+        comparison_results = {'matched_data': matched_data}
+
+        # Create regions
+        regions = gpd.GeoDataFrame({
+            'name': ['West Antarctica', 'East Antarctica'],
+        }, geometry=[
+            box(-130, -85, -60, -70),  # West Antarctica
+            box(0, -85, 180, -60),     # East Antarctica
+        ], crs='EPSG:4326')
+
+        result = aggregate_comparisons_by_region(comparison_results, regions, region_name_col='name')
+
+        assert len(result) == 1  # Only West Antarctica has points
+        assert result.iloc[0]['region'] == 'West Antarctica'
+        assert result.iloc[0]['n_points'] == 3
+
+    def test_aggregate_comparisons_by_region_empty(self):
+        """Test aggregation with empty matched data."""
+        from xopr.bedmap.compare import aggregate_comparisons_by_region
+
+        comparison_results = {'matched_data': gpd.GeoDataFrame()}
+
+        regions = gpd.GeoDataFrame({
+            'name': ['Region1'],
+        }, geometry=[box(-80, -80, -70, -70)], crs='EPSG:4326')
+
+        result = aggregate_comparisons_by_region(comparison_results, regions, region_name_col='name')
+
+        assert len(result) == 0
+
+
+class TestConverterAdvancedCoverage:
+    """Additional converter tests for better coverage."""
+
+    def test_parse_metadata_with_numeric_values(self):
+        """Test parsing metadata with numeric electromagnetic values."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            csv_path = tmpdir / 'test.csv'
+
+            with open(csv_path, 'w') as f:
+                f.write("#project: Test\n")
+                f.write("#electromagnetic_wave_speed_in_ice: 168.9 (m/microseconds)\n")
+                f.write("#firn_correction: 10.5 (m)\n")
+                f.write("#centre_frequency: 150 (MHz)\n")
+                f.write("#\n")  # Empty comment line
+                f.write("#time_coverage_start: invalid_year\n")  # Non-numeric year
+                f.write("lon,lat\n")
+                f.write("0,0\n")
+
+            metadata = parse_bedmap_metadata(csv_path)
+
+            assert metadata['electromagnetic_wave_speed_in_ice'] == 168.9
+            assert metadata['electromagnetic_wave_speed_in_ice_unit'] == 'm/microseconds'
+            assert metadata['firn_correction'] == 10.5
+            assert metadata['centre_frequency'] == 150
+            assert metadata['time_coverage_start'] == 'invalid_year'
+
+    def test_apply_hilbert_sorting(self):
+        """Test Hilbert curve sorting function."""
+        from xopr.bedmap.converter import _apply_hilbert_sorting
+
+        # Create test GeoDataFrame with scattered points
+        gdf = gpd.GeoDataFrame({
+            'value': [1, 2, 3, 4, 5],
+        }, geometry=[
+            Point(-70, -75),
+            Point(-80, -85),
+            Point(-75, -80),
+            Point(-65, -70),
+            Point(-85, -90),
+        ], crs='EPSG:4326')
+
+        sorted_gdf = _apply_hilbert_sorting(gdf)
+
+        # Should have same number of rows
+        assert len(sorted_gdf) == 5
+        # Should be reordered (values should not be sequential anymore)
+        assert list(sorted_gdf['value']) != [1, 2, 3, 4, 5]
+
+    def test_batch_convert_no_files(self):
+        """Test batch conversion with no matching files."""
+        from xopr.bedmap.converter import batch_convert_bedmap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with pytest.warns(UserWarning, match="No CSV files found"):
+                result = batch_convert_bedmap(
+                    input_dir=tmpdir,
+                    output_dir=tmpdir,
+                    pattern='*.csv'
+                )
+
+            assert result == []
+
+    def test_batch_convert_single_file(self):
+        """Test batch conversion with a single file."""
+        from xopr.bedmap.converter import batch_convert_bedmap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            input_dir = tmpdir / 'input'
+            output_dir = tmpdir / 'output'
+            input_dir.mkdir()
+
+            # Create a simple CSV file
+            csv_path = input_dir / 'TEST_2020_DATA_BM2.csv'
+            with open(csv_path, 'w') as f:
+                f.write("#project: Test\n")
+                f.write("#time_coverage_start: 2020\n")
+                f.write("#time_coverage_end: 2020\n")
+                f.write("trajectory_id,trace_number,longitude (degree_east),latitude (degree_north),date,time_UTC,surface_altitude (m),land_ice_thickness (m),bedrock_altitude (m),two_way_travel_time (m),aircraft_altitude (m),along_track_distance (m)\n")
+                f.write("1,-9999,-70.0,-70.0,-9999,-9999,1000.0,500.0,500.0,-9999,-9999,-9999\n")
+                f.write("1,-9999,-70.1,-70.1,-9999,-9999,1010.0,510.0,500.0,-9999,-9999,-9999\n")
+
+            result = batch_convert_bedmap(
+                input_dir=input_dir,
+                output_dir=output_dir,
+                pattern='*.csv',
+                parallel=False
+            )
+
+            assert len(result) == 1
+            assert (output_dir / 'TEST_2020_DATA_BM2.parquet').exists()
 
 
 class TestGeometryAdvanced:
@@ -949,6 +1176,256 @@ class TestGeometryAdvanced:
 
         # Should still be MultiLineString
         assert isinstance(result, MultiLineString)
+
+
+class TestQueryCatalog:
+    """Tests for query_bedmap_catalog and query_bedmap functions."""
+
+    def test_query_bedmap_catalog_local_path(self):
+        """Test querying a local catalog parquet file."""
+        from xopr.bedmap.query import query_bedmap_catalog
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # Create a mock catalog parquet file
+            catalog_gdf = gpd.GeoDataFrame({
+                'id': ['item1', 'item2', 'item3'],
+                'asset_href': ['/path/to/file1.parquet', '/path/to/file2.parquet', '/path/to/file3.parquet'],
+                'temporal_start': ['2020-01-01', '2021-01-01', '2022-01-01'],
+                'temporal_end': ['2020-12-31', '2021-12-31', '2022-12-31'],
+                'institution': ['AWI', 'BAS', 'AWI'],
+            }, geometry=[
+                box(-80, -80, -70, -75),
+                box(-70, -78, -60, -72),
+                box(-90, -85, -80, -80),
+            ], crs='EPSG:4326')
+            catalog_gdf.to_parquet(tmpdir / 'bedmap2.parquet')
+
+            # Query without filters
+            result = query_bedmap_catalog(
+                catalog_path=str(tmpdir),
+                collections=['bedmap2']
+            )
+
+            assert len(result) == 3
+            assert 'asset_href' in result.columns
+
+    def test_query_bedmap_catalog_with_spatial_filter(self):
+        """Test catalog query with spatial filter."""
+        from xopr.bedmap.query import query_bedmap_catalog
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # Create catalog with items in different locations
+            catalog_gdf = gpd.GeoDataFrame({
+                'id': ['item1', 'item2'],
+                'asset_href': ['/path/to/file1.parquet', '/path/to/file2.parquet'],
+            }, geometry=[
+                box(-80, -80, -70, -75),  # West Antarctica
+                box(100, -70, 110, -65),  # East Antarctica
+            ], crs='EPSG:4326')
+            catalog_gdf.to_parquet(tmpdir / 'bedmap2.parquet')
+
+            # Query for West Antarctica only
+            result = query_bedmap_catalog(
+                catalog_path=str(tmpdir),
+                collections=['bedmap2'],
+                geometry=box(-85, -82, -65, -73)
+            )
+
+            assert len(result) == 1
+            assert result.iloc[0]['id'] == 'item1'
+
+    def test_query_bedmap_catalog_with_temporal_filter(self):
+        """Test catalog query with temporal filter."""
+        from xopr.bedmap.query import query_bedmap_catalog
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # Create catalog with items from different years
+            catalog_gdf = gpd.GeoDataFrame({
+                'id': ['item1', 'item2', 'item3'],
+                'asset_href': ['/path/1.parquet', '/path/2.parquet', '/path/3.parquet'],
+                'temporal_start': ['2019-01-01', '2020-06-01', '2021-01-01'],
+                'temporal_end': ['2019-12-31', '2020-12-31', '2021-12-31'],
+            }, geometry=[box(-80, -80, -70, -75)] * 3, crs='EPSG:4326')
+            catalog_gdf.to_parquet(tmpdir / 'bedmap3.parquet')
+
+            # Query for 2020 only
+            result = query_bedmap_catalog(
+                catalog_path=str(tmpdir),
+                collections=['bedmap3'],
+                date_range=(datetime(2020, 1, 1), datetime(2020, 12, 31))
+            )
+
+            assert len(result) == 1
+            assert result.iloc[0]['id'] == 'item2'
+
+    def test_query_bedmap_catalog_with_property_filters(self):
+        """Test catalog query with property filters."""
+        from xopr.bedmap.query import query_bedmap_catalog
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # Create catalog with different institutions
+            catalog_gdf = gpd.GeoDataFrame({
+                'id': ['item1', 'item2', 'item3'],
+                'asset_href': ['/path/1.parquet', '/path/2.parquet', '/path/3.parquet'],
+                'institution': ['AWI', 'BAS', 'AWI'],
+            }, geometry=[box(-80, -80, -70, -75)] * 3, crs='EPSG:4326')
+            catalog_gdf.to_parquet(tmpdir / 'bedmap2.parquet')
+
+            # Filter by single value
+            result = query_bedmap_catalog(
+                catalog_path=str(tmpdir),
+                collections=['bedmap2'],
+                properties={'institution': 'AWI'}
+            )
+            assert len(result) == 2
+
+            # Filter by list of values
+            result = query_bedmap_catalog(
+                catalog_path=str(tmpdir),
+                collections=['bedmap2'],
+                properties={'institution': ['BAS']}
+            )
+            assert len(result) == 1
+            assert result.iloc[0]['institution'] == 'BAS'
+
+    def test_query_bedmap_catalog_missing_collection(self):
+        """Test catalog query when collection doesn't exist."""
+        from xopr.bedmap.query import query_bedmap_catalog
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = query_bedmap_catalog(
+                catalog_path=str(tmpdir),
+                collections=['bedmap_nonexistent']
+            )
+
+            assert len(result) == 0
+
+    def test_query_bedmap_catalog_empty_result(self):
+        """Test catalog query that returns empty result."""
+        from xopr.bedmap.query import query_bedmap_catalog
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # Create catalog with items
+            catalog_gdf = gpd.GeoDataFrame({
+                'id': ['item1'],
+                'asset_href': ['/path/1.parquet'],
+            }, geometry=[box(-80, -80, -70, -75)], crs='EPSG:4326')
+            catalog_gdf.to_parquet(tmpdir / 'bedmap2.parquet')
+
+            # Query for area with no data
+            result = query_bedmap_catalog(
+                catalog_path=str(tmpdir),
+                collections=['bedmap2'],
+                geometry=box(0, 0, 10, 10)  # Far from data
+            )
+
+            assert len(result) == 0
+
+    def test_query_bedmap_with_local_catalog_and_data(self):
+        """Test full query_bedmap function with local catalog and data files."""
+        from xopr.bedmap.query import query_bedmap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            data_dir = tmpdir / 'data'
+            data_dir.mkdir()
+
+            # Create test data GeoParquet files
+            gdf1 = gpd.GeoDataFrame({
+                'timestamp': pd.to_datetime(['2020-06-15']),
+                'surface_altitude (m)': [1000],
+                'source_file': ['test1'],
+            }, geometry=[Point(-75, -78)], crs='EPSG:4326')
+            gdf1.to_parquet(data_dir / 'test1.parquet')
+
+            gdf2 = gpd.GeoDataFrame({
+                'timestamp': pd.to_datetime(['2021-06-15']),
+                'surface_altitude (m)': [2000],
+                'source_file': ['test2'],
+            }, geometry=[Point(-76, -77)], crs='EPSG:4326')
+            gdf2.to_parquet(data_dir / 'test2.parquet')
+
+            # Create catalog pointing to data files
+            catalog_gdf = gpd.GeoDataFrame({
+                'id': ['item1', 'item2'],
+                'asset_href': [str(data_dir / 'test1.parquet'), str(data_dir / 'test2.parquet')],
+                'temporal_start': ['2020-01-01', '2021-01-01'],
+                'temporal_end': ['2020-12-31', '2021-12-31'],
+            }, geometry=[
+                box(-80, -80, -70, -75),
+                box(-80, -80, -70, -75),
+            ], crs='EPSG:4326')
+            catalog_gdf.to_parquet(tmpdir / 'bedmap2.parquet')
+
+            # Query with catalog
+            result = query_bedmap(
+                catalog_path=str(tmpdir),
+                collections=['bedmap2'],
+                geometry=box(-85, -82, -65, -73),
+                max_rows=100
+            )
+
+            assert len(result) == 2
+            assert 'lon' in result.columns
+            assert 'lat' in result.columns
+
+    def test_query_bedmap_no_catalog_matches(self):
+        """Test query_bedmap when no catalog items match."""
+        from xopr.bedmap.query import query_bedmap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with pytest.warns(UserWarning, match="No matching bedmap items"):
+                result = query_bedmap(
+                    catalog_path=str(tmpdir),
+                    collections=['bedmap_nonexistent']
+                )
+
+            assert len(result) == 0
+
+    def test_query_bedmap_exclude_geometry_false(self):
+        """Test query_bedmap with exclude_geometry=False to create geometry column."""
+        from xopr.bedmap.query import query_bedmap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            data_dir = tmpdir / 'data'
+            data_dir.mkdir()
+
+            # Create test data
+            gdf = gpd.GeoDataFrame({
+                'timestamp': pd.to_datetime(['2020-06-15']),
+                'surface_altitude (m)': [1000],
+            }, geometry=[Point(-75, -78)], crs='EPSG:4326')
+            gdf.to_parquet(data_dir / 'test.parquet')
+
+            # Create catalog
+            catalog_gdf = gpd.GeoDataFrame({
+                'id': ['item1'],
+                'asset_href': [str(data_dir / 'test.parquet')],
+            }, geometry=[box(-80, -80, -70, -75)], crs='EPSG:4326')
+            catalog_gdf.to_parquet(tmpdir / 'bedmap2.parquet')
+
+            # Query with exclude_geometry=False
+            result = query_bedmap(
+                catalog_path=str(tmpdir),
+                collections=['bedmap2'],
+                geometry=box(-85, -82, -65, -73),
+                exclude_geometry=False
+            )
+
+            assert len(result) == 1
+            assert result.geometry is not None
+            assert result.crs == 'EPSG:4326'
 
 
 class TestQueryIntegration:
