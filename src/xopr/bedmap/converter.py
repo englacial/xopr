@@ -4,26 +4,29 @@ Converter module for transforming bedmap CSV files to GeoParquet format.
 This module handles:
 - Parsing bedmap CSV files and metadata
 - Complex date/time handling with fallback strategies
-- Converting data to cloud-optimized GeoParquet format
+- Converting data to cloud-optimized GeoParquet format with WKB Point geometry
+- Hilbert curve sorting for large files (>600k rows) to optimize spatial queries
 - Extracting spatial and temporal bounds
 """
 
 import pandas as pd
 import numpy as np
-import pyarrow as pa
-import pyarrow.parquet as pq
 import geopandas as gpd
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List, Union
 from datetime import datetime, timezone
 import warnings
-import json
 
 from .geometry import (
     extract_flight_lines,
     simplify_multiline_geometry,
     calculate_bbox,
 )
+
+# Threshold for applying Hilbert sorting (rows)
+HILBERT_ROW_THRESHOLD = 600_000
+# Row group size for files with Hilbert sorting
+HILBERT_ROW_GROUP_SIZE = 50_000
 
 
 def parse_bedmap_metadata(csv_path: Union[str, Path]) -> Dict:
@@ -260,15 +263,65 @@ def extract_temporal_extent(
     return (start_time, end_time)
 
 
+def _apply_hilbert_sorting(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """
+    Apply Hilbert curve sorting to a GeoDataFrame for spatial locality.
+
+    Uses file-specific bounds for the Hilbert curve to maximize spatial
+    locality within each file.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        GeoDataFrame with Point geometry
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        Sorted GeoDataFrame
+    """
+    import duckdb
+
+    # Extract coordinates
+    coords_df = pd.DataFrame({
+        'lon': gdf.geometry.x,
+        'lat': gdf.geometry.y,
+    })
+    coords_df['orig_idx'] = range(len(coords_df))
+
+    conn = duckdb.connect()
+    conn.execute("INSTALL spatial; LOAD spatial;")
+    conn.register('coords', coords_df)
+
+    # Get file-specific bounds for Hilbert curve
+    minx, miny, maxx, maxy = gdf.total_bounds
+
+    # Compute Hilbert indices and sort
+    sorted_order = conn.execute(f"""
+        SELECT orig_idx,
+               ST_Hilbert(lon, lat,
+                   {{'min_x': {minx}, 'min_y': {miny}, 'max_x': {maxx}, 'max_y': {maxy}}}::BOX_2D
+               ) as hilbert_idx
+        FROM coords
+        ORDER BY hilbert_idx
+    """).fetchdf()
+    conn.close()
+
+    # Reorder GeoDataFrame
+    return gdf.iloc[sorted_order['orig_idx'].values].reset_index(drop=True)
+
+
 def convert_bedmap_csv(
     csv_path: Union[str, Path],
     output_dir: Union[str, Path],
     simplify_tolerance_deg: float = 0.01,
-    row_group_size: int = 100000,
-    compression: str = 'snappy'
 ) -> Dict:
     """
-    Convert a single bedmap CSV file to GeoParquet format.
+    Convert a single bedmap CSV file to cloud-optimized GeoParquet format.
+
+    Creates GeoParquet files with WKB-encoded Point geometry and zstd compression.
+    For large files (>600k rows), applies Hilbert curve sorting with 50k row groups
+    to optimize spatial queries.
 
     Parameters
     ----------
@@ -278,16 +331,14 @@ def convert_bedmap_csv(
         Directory for output GeoParquet file
     simplify_tolerance_deg : float
         Tolerance for geometry simplification in degrees
-    row_group_size : int
-        Number of rows per row group in Parquet file
-    compression : str
-        Compression algorithm ('snappy', 'gzip', 'brotli', 'lz4', 'zstd')
 
     Returns
     -------
     dict
         Dictionary containing metadata and bounds information
     """
+    from shapely.geometry import Point
+
     csv_path = Path(csv_path)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -349,43 +400,45 @@ def convert_bedmap_csv(
         'original_metadata': metadata,
     }
 
+    # Create Point geometry from lon/lat columns
+    geometry = [
+        Point(lon, lat) for lon, lat in
+        zip(df['longitude (degree_east)'], df['latitude (degree_north)'])
+    ]
+
+    # Create GeoDataFrame with WKB Point geometry
+    gdf = gpd.GeoDataFrame(
+        df.drop(columns=['longitude (degree_east)', 'latitude (degree_north)',
+                        'date', 'time_UTC'], errors='ignore'),
+        geometry=geometry,
+        crs='EPSG:4326'
+    )
+
+    # Determine if Hilbert sorting is needed based on row count
+    row_count = len(gdf)
+    use_hilbert = row_count > HILBERT_ROW_THRESHOLD
+
+    if use_hilbert:
+        print(f"  Applying Hilbert sorting ({row_count:,} rows > {HILBERT_ROW_THRESHOLD:,} threshold)")
+        gdf = _apply_hilbert_sorting(gdf)
+        row_group_size = HILBERT_ROW_GROUP_SIZE
+    else:
+        row_group_size = None  # Use default (single row group)
+
     # Prepare output path
     output_path = output_dir / f"{source_name}.parquet"
 
-    # Define schema with proper types
-    schema = pa.schema([
-        ('trajectory_id', pa.string()),
-        ('trace_number', pa.int32()),
-        ('longitude (degree_east)', pa.float32()),
-        ('latitude (degree_north)', pa.float32()),
-        ('timestamp', pa.timestamp('us', tz='UTC')),
-        ('surface_altitude (m)', pa.float32()),
-        ('land_ice_thickness (m)', pa.float32()),
-        ('bedrock_altitude (m)', pa.float32()),
-        ('two_way_travel_time (m)', pa.float32()),
-        ('aircraft_altitude (m)', pa.float32()),
-        ('along_track_distance (m)', pa.float32()),
-        ('source_file', pa.string()),
-    ])
+    # Write as GeoParquet with zstd compression
+    write_kwargs = {'compression': 'zstd'}
+    if row_group_size is not None:
+        write_kwargs['row_group_size'] = row_group_size
 
-    # Convert to PyArrow table
-    table = pa.Table.from_pandas(df, schema=schema)
-
-    # Add metadata to table
-    existing_meta = table.schema.metadata or {}
-    existing_meta[b'bedmap_metadata'] = json.dumps(file_metadata).encode()
-    table = table.replace_schema_metadata(existing_meta)
-
-    # Write as Parquet file
-    pq.write_table(
-        table,
-        output_path,
-        compression=compression,
-        row_group_size=row_group_size,
-    )
+    gdf.to_parquet(output_path, **write_kwargs)
 
     print(f"  Written to {output_path}")
-    print(f"  Rows: {len(df):,}")
+    print(f"  Rows: {row_count:,}")
+    if use_hilbert:
+        print(f"  Row groups: {row_group_size:,} rows each")
     if bbox:
         print(f"  Spatial extent: {bbox[0]:.2f}, {bbox[1]:.2f} to {bbox[2]:.2f}, {bbox[3]:.2f}")
     if temporal_start and temporal_end:

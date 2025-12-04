@@ -7,6 +7,7 @@ using GeoParquet STAC catalogs and DuckDB for partial reads from cloud-optimized
 
 import duckdb
 import geopandas as gpd
+import numpy as np
 from typing import Optional, List, Dict, Tuple, Union
 from datetime import datetime
 from pathlib import Path
@@ -53,7 +54,8 @@ def _build_polar_sql_filter(polar_bounds: Tuple[float, float, float, float]) -> 
     Build SQL WHERE clause for filtering in polar coordinates.
 
     Uses a spherical approximation of Antarctic Polar Stereographic (EPSG:3031)
-    that can be computed directly in SQL.
+    that can be computed directly in SQL. Works with GeoParquet files that have
+    WKB-encoded Point geometry accessed via ST_X(geometry) and ST_Y(geometry).
 
     Parameters
     ----------
@@ -65,22 +67,20 @@ def _build_polar_sql_filter(polar_bounds: Tuple[float, float, float, float]) -> 
     str
         SQL WHERE clause fragment
     """
-    x_min, y_min, x_max, y_max = polar_bounds
+    min_x, min_y, max_x, max_y = polar_bounds
 
     # Spherical approximation of South Polar Stereographic (EPSG:3031)
+    # Uses ST_X/ST_Y to extract coordinates from WKB Point geometry
+    # Note: y coordinate uses positive cos (matching EPSG:3031 convention)
     polar_sql = f"""
     (
-        (6378137.0 * (1.0 + SIN(RADIANS(71.0))) * COS(RADIANS("latitude (degree_north)")) * SIN(RADIANS("longitude (degree_east)")))
-            / (1.0 + SIN(RADIANS(-"latitude (degree_north)"))) >= {x_min}
+        (6371000.0 * 2 * tan(radians(45 + ST_Y(geometry)/2)) * sin(radians(ST_X(geometry)))) >= {min_x}
         AND
-        (6378137.0 * (1.0 + SIN(RADIANS(71.0))) * COS(RADIANS("latitude (degree_north)")) * SIN(RADIANS("longitude (degree_east)")))
-            / (1.0 + SIN(RADIANS(-"latitude (degree_north)"))) <= {x_max}
+        (6371000.0 * 2 * tan(radians(45 + ST_Y(geometry)/2)) * sin(radians(ST_X(geometry)))) <= {max_x}
         AND
-        (6378137.0 * (1.0 + SIN(RADIANS(71.0))) * COS(RADIANS("latitude (degree_north)")) * COS(RADIANS("longitude (degree_east)")))
-            / (1.0 + SIN(RADIANS(-"latitude (degree_north)"))) >= {y_min}
+        (6371000.0 * 2 * tan(radians(45 + ST_Y(geometry)/2)) * cos(radians(ST_X(geometry)))) >= {min_y}
         AND
-        (6378137.0 * (1.0 + SIN(RADIANS(71.0))) * COS(RADIANS("latitude (degree_north)")) * COS(RADIANS("longitude (degree_east)")))
-            / (1.0 + SIN(RADIANS(-"latitude (degree_north)"))) <= {y_max}
+        (6371000.0 * 2 * tan(radians(45 + ST_Y(geometry)/2)) * cos(radians(ST_X(geometry)))) <= {max_y}
     )
     """
     return polar_sql.strip()
@@ -95,12 +95,15 @@ def build_duckdb_query(
     use_polar_filter: bool = True
 ) -> str:
     """
-    Build DuckDB SQL query for partial reads from parquet files.
+    Build DuckDB SQL query for partial reads from GeoParquet files.
+
+    Works with GeoParquet files that have WKB-encoded Point geometry.
+    Uses DuckDB spatial extension for geometry operations.
 
     Parameters
     ----------
     parquet_urls : list of str
-        URLs/paths to parquet files
+        URLs/paths to GeoParquet files
     geometry : shapely geometry, optional
         Spatial filter
     date_range : tuple of datetime, optional
@@ -124,13 +127,27 @@ def build_duckdb_query(
         unions = [f"SELECT * FROM read_parquet('{url}')" for url in parquet_urls]
         from_clause = f"({' UNION ALL '.join(unions)})"
 
-    # Build SELECT clause
+    # Build SELECT clause - GeoParquet uses geometry column
+    # Extract lon/lat using ST_X/ST_Y instead of raw WKB geometry
     if columns:
-        if geometry and 'longitude (degree_east)' not in columns:
-            columns = columns + ['longitude (degree_east)', 'latitude (degree_north)']
-        select_clause = ', '.join([f'"{col}"' for col in columns])
+        # Add lon/lat extraction if needed for spatial filtering
+        if geometry and 'lon' not in columns and 'lat' not in columns:
+            columns = columns + ['lon', 'lat']
+        select_parts = []
+        for col in columns:
+            if col == 'lon':
+                select_parts.append('ST_X(geometry) as lon')
+            elif col == 'lat':
+                select_parts.append('ST_Y(geometry) as lat')
+            elif col == 'geometry':
+                # Skip raw geometry, use lon/lat instead
+                continue
+            else:
+                select_parts.append(f'"{col}"')
+        select_clause = ', '.join(select_parts)
     else:
-        select_clause = '*'
+        # Select all columns plus extracted lon/lat
+        select_clause = '*, ST_X(geometry) as lon, ST_Y(geometry) as lat'
 
     # Build WHERE clause
     where_conditions = []
@@ -143,12 +160,13 @@ def build_duckdb_query(
             if polar_bounds:
                 where_conditions.append(_build_polar_sql_filter(polar_bounds))
         else:
+            # Simple bounding box filter using ST_X/ST_Y for GeoParquet
             bounds = geometry.bounds
             where_conditions.append(
-                f'"longitude (degree_east)" >= {bounds[0]} AND '
-                f'"longitude (degree_east)" <= {bounds[2]} AND '
-                f'"latitude (degree_north)" >= {bounds[1]} AND '
-                f'"latitude (degree_north)" <= {bounds[3]}'
+                f'ST_X(geometry) >= {bounds[0]} AND '
+                f'ST_X(geometry) <= {bounds[2]} AND '
+                f'ST_Y(geometry) >= {bounds[1]} AND '
+                f'ST_Y(geometry) <= {bounds[3]}'
             )
 
     if date_range:
@@ -330,7 +348,7 @@ def query_bedmap(
     parquet_urls = catalog_items['asset_href'].tolist()
 
     # Build and execute DuckDB query
-    print(f"Querying {len(parquet_urls)} parquet files...")
+    print(f"Querying {len(parquet_urls)} GeoParquet files...")
 
     query = build_duckdb_query(
         parquet_urls=parquet_urls,
@@ -342,9 +360,9 @@ def query_bedmap(
 
     conn = duckdb.connect()
     try:
-        # Enable cloud storage support
-        conn.execute("INSTALL httpfs")
-        conn.execute("LOAD httpfs")
+        # Enable cloud storage and spatial extension support
+        conn.execute("INSTALL httpfs; LOAD httpfs;")
+        conn.execute("INSTALL spatial; LOAD spatial;")
 
         result_df = conn.execute(query).df()
     except Exception as e:
@@ -358,13 +376,16 @@ def query_bedmap(
 
     print(f"Retrieved {len(result_df):,} rows")
 
-    # Create GeoDataFrame
-    if not exclude_geometry and 'longitude (degree_east)' in result_df.columns:
-        geometry_col = gpd.points_from_xy(
-            result_df['longitude (degree_east)'],
-            result_df['latitude (degree_north)']
-        )
-        return gpd.GeoDataFrame(result_df, geometry=geometry_col, crs='EPSG:4326')
+    # Query already extracts lon/lat from geometry using ST_X/ST_Y
+    if 'lon' in result_df.columns and 'lat' in result_df.columns:
+        if not exclude_geometry:
+            # Create geometry from lon/lat
+            geometry = gpd.points_from_xy(result_df['lon'], result_df['lat'])
+            gdf = gpd.GeoDataFrame(result_df, geometry=geometry, crs='EPSG:4326')
+            return gdf
+        else:
+            # Just return with lon/lat columns (no geometry)
+            return gpd.GeoDataFrame(result_df)
 
     return gpd.GeoDataFrame(result_df)
 
@@ -378,14 +399,14 @@ def query_bedmap_local(
     exclude_geometry: bool = True
 ) -> gpd.GeoDataFrame:
     """
-    Query bedmap data from local parquet files.
+    Query bedmap data from local GeoParquet files.
 
     Simplified version for querying local files without STAC catalog.
 
     Parameters
     ----------
     parquet_dir : str or Path
-        Directory containing parquet files
+        Directory containing GeoParquet files
     geometry : shapely geometry, optional
         Spatial filter
     date_range : tuple of datetime, optional
@@ -421,6 +442,8 @@ def query_bedmap_local(
 
     conn = duckdb.connect()
     try:
+        # Load spatial extension for ST_X/ST_Y functions
+        conn.execute("INSTALL spatial; LOAD spatial;")
         result_df = conn.execute(query).df()
     finally:
         conn.close()
@@ -428,11 +451,15 @@ def query_bedmap_local(
     if result_df.empty:
         return gpd.GeoDataFrame()
 
-    if not exclude_geometry and 'longitude (degree_east)' in result_df.columns:
-        geometry_col = gpd.points_from_xy(
-            result_df['longitude (degree_east)'],
-            result_df['latitude (degree_north)']
-        )
-        return gpd.GeoDataFrame(result_df, geometry=geometry_col, crs='EPSG:4326')
+    # Query already extracts lon/lat from geometry using ST_X/ST_Y
+    if 'lon' in result_df.columns and 'lat' in result_df.columns:
+        if not exclude_geometry:
+            # Create geometry from lon/lat
+            geometry = gpd.points_from_xy(result_df['lon'], result_df['lat'])
+            gdf = gpd.GeoDataFrame(result_df, geometry=geometry, crs='EPSG:4326')
+            return gdf
+        else:
+            # Just return with lon/lat columns (no geometry)
+            return gpd.GeoDataFrame(result_df)
 
     return gpd.GeoDataFrame(result_df)

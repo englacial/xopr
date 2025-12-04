@@ -15,6 +15,31 @@ from datetime import datetime
 import warnings
 
 
+def _get_lon_lat_columns(df: pd.DataFrame) -> Tuple[str, str]:
+    """
+    Get the longitude and latitude column names from a DataFrame.
+
+    Handles both old format ('longitude (degree_east)', 'latitude (degree_north)')
+    and new GeoParquet format ('lon', 'lat').
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        DataFrame to check
+
+    Returns
+    -------
+    tuple
+        (lon_col, lat_col) column names
+    """
+    if 'lon' in df.columns and 'lat' in df.columns:
+        return 'lon', 'lat'
+    elif 'longitude (degree_east)' in df.columns:
+        return 'longitude (degree_east)', 'latitude (degree_north)'
+    else:
+        raise ValueError("Could not find longitude/latitude columns")
+
+
 def match_bedmap_to_opr(
     bedmap_data: gpd.GeoDataFrame,
     opr_dataset: xr.Dataset,
@@ -40,9 +65,10 @@ def match_bedmap_to_opr(
     pandas.DataFrame
         Matched data with bedmap and OPR measurements
     """
-    # Extract coordinates from bedmap
-    bedmap_lons = bedmap_data['longitude (degree_east)'].values
-    bedmap_lats = bedmap_data['latitude (degree_north)'].values
+    # Extract coordinates from bedmap (handle both column naming conventions)
+    lon_col, lat_col = _get_lon_lat_columns(bedmap_data)
+    bedmap_lons = bedmap_data[lon_col].values
+    bedmap_lats = bedmap_data[lat_col].values
 
     # Extract coordinates from OPR
     opr_lons = opr_dataset['Longitude'].values
@@ -162,13 +188,16 @@ def compare_with_opr(
                 bedmap_data['bedrock_altitude (m)']
             )
 
+    # Get coordinate columns
+    lon_col, lat_col = _get_lon_lat_columns(bedmap_data)
+
     # Compare with OPR surface if provided
     if opr_surface is not None:
         bedmap_surface = bedmap_data['surface_altitude (m)'].values
         opr_surface_matched = _interpolate_to_points(
             opr_surface,
-            bedmap_data['longitude (degree_east)'].values,
-            bedmap_data['latitude (degree_north)'].values
+            bedmap_data[lon_col].values,
+            bedmap_data[lat_col].values
         )
 
         surface_diff = bedmap_surface - opr_surface_matched
@@ -188,8 +217,8 @@ def compare_with_opr(
         bedmap_bed = bedmap_data['bedrock_altitude (m)'].values
         opr_bed_matched = _interpolate_to_points(
             opr_bed,
-            bedmap_data['longitude (degree_east)'].values,
-            bedmap_data['latitude (degree_north)'].values
+            bedmap_data[lon_col].values,
+            bedmap_data[lat_col].values
         )
 
         bed_diff = bedmap_bed - opr_bed_matched
@@ -323,12 +352,13 @@ def aggregate_comparisons_by_region(
     # Ensure matched_data is a GeoDataFrame
     if not isinstance(matched_data, gpd.GeoDataFrame):
         if 'geometry' not in matched_data.columns:
-            # Create point geometries
+            # Create point geometries (handle both column naming conventions)
+            lon_col, lat_col = _get_lon_lat_columns(matched_data)
             matched_data = gpd.GeoDataFrame(
                 matched_data,
                 geometry=gpd.points_from_xy(
-                    matched_data['longitude (degree_east)'],
-                    matched_data['latitude (degree_north)']
+                    matched_data[lon_col],
+                    matched_data[lat_col]
                 ),
                 crs='EPSG:4326'
             )
@@ -403,13 +433,16 @@ def create_crossover_analysis(
         if valid_matches.empty:
             continue
 
+        # Get coordinate columns (handle both naming conventions)
+        lon_col, lat_col = _get_lon_lat_columns(valid_matches)
+
         # Calculate differences at crossovers
         for _, row in valid_matches.iterrows():
             crossover = {
                 'bedmap_id': row.get('source_file', ''),
                 'opr_track': i,
-                'longitude': row['longitude (degree_east)'],
-                'latitude': row['latitude (degree_north)'],
+                'longitude': row[lon_col],
+                'latitude': row[lat_col],
                 'distance_m': row['opr_match_distance_m'],
             }
 
