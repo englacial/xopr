@@ -1196,7 +1196,7 @@ class TestQueryCatalogCloud:
         # Query the real cloud catalog - just check structure, not content
         try:
             result = query_bedmap_catalog(
-                catalog_path='gs://opr_stac/bedmap/**/*.parquet',
+                catalog_path='gs://opr_stac/bedmap/bedmap*.parquet',
                 max_items=5  # Limit to avoid downloading too much
             )
 

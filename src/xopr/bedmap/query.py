@@ -186,7 +186,7 @@ def build_duckdb_query(
 
 
 def query_bedmap_catalog(
-    catalog_path: str = 'gs://opr_stac/bedmap/**/*.parquet',
+    catalog_path: str = 'gs://opr_stac/bedmap/bedmap*.parquet',
     collections: Optional[List[str]] = None,
     geometry: Optional[shapely.geometry.base.BaseGeometry] = None,
     date_range: Optional[Tuple[datetime, datetime]] = None,
@@ -329,7 +329,7 @@ def query_bedmap(
     properties: Optional[Dict] = None,
     max_rows: Optional[int] = None,
     columns: Optional[List[str]] = None,
-    catalog_path: str = 'gs://opr_stac/bedmap/**/*.parquet',
+    catalog_path: str = 'gs://opr_stac/bedmap/bedmap*.parquet',
     exclude_geometry: bool = True
 ) -> gpd.GeoDataFrame:
     """
@@ -355,7 +355,7 @@ def query_bedmap(
     columns : list of str, optional
         Specific columns to retrieve
     catalog_path : str
-        Glob pattern to GeoParquet catalog files
+        Path pattern to STAC GeoParquet catalog files (bedmap1/2/3.parquet)
     exclude_geometry : bool, default True
         If True, don't create geometry column (keeps lat/lon as separate columns)
 
