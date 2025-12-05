@@ -21,7 +21,7 @@ project:
     - file: design.md
     - file: map.md
     - title: API Docs
-      url: api/xopr.html
+      url: /xopr/api/xopr.html
     - title: Notebooks
       children:
         - file: notebooks/demo_notebook.ipynb
