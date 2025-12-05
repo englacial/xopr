@@ -20,6 +20,8 @@ project:
     - file: index.md
     - file: design.md
     - file: map.md
+    - title: API Docs
+      url: api/xopr.html
     - title: Notebooks
       children:
         - file: notebooks/demo_notebook.ipynb
