@@ -28,6 +28,7 @@ dependencies = [
     "duckdb>=1.0.0",
     "haversine>=2.8.0",
     "pyarrow",
+    "platformdirs",
 ]
 
 [project.optional-dependencies]

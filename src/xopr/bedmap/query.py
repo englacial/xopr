@@ -23,6 +23,7 @@ from .geometry import (
     check_intersects_polar,
     get_polar_bounds,
 )
+from ..stac_cache import get_bedmap_catalog_path
 
 
 def _crosses_antimeridian(geometry: shapely.geometry.base.BaseGeometry) -> bool:
@@ -186,26 +187,23 @@ def build_duckdb_query(
 
 
 def query_bedmap_catalog(
-    catalog_path: str = 'gs://opr_stac/bedmap/bedmap*.parquet',
     collections: Optional[List[str]] = None,
     geometry: Optional[shapely.geometry.base.BaseGeometry] = None,
     date_range: Optional[Tuple[datetime, datetime]] = None,
     properties: Optional[Dict] = None,
     max_items: Optional[int] = None,
     exclude_geometry: bool = False,
+    catalog_path: str = 'local',
 ) -> gpd.GeoDataFrame:
     """
     Query GeoParquet STAC catalogs for matching bedmap items using rustac.
 
     This function uses rustac's DuckdbClient to perform efficient spatial queries
-    on cloud-hosted STAC GeoParquet catalogs, following the same pattern as
+    on STAC GeoParquet catalogs, following the same pattern as
     OPRConnection.query_frames().
 
     Parameters
     ----------
-    catalog_path : str
-        Glob pattern to GeoParquet catalog files (local or cloud).
-        Default: 'gs://opr_stac/bedmap/**/*.parquet'
     collections : list of str, optional
         Filter by bedmap version (e.g., ['bedmap1', 'bedmap2', 'bedmap3'])
     geometry : shapely geometry, optional
@@ -218,12 +216,21 @@ def query_bedmap_catalog(
         Maximum number of items to return
     exclude_geometry : bool, default False
         If True, exclude geometry column from results
+    catalog_path : str, default 'local'
+        Catalog source: 'local' (cached, downloaded on first use),
+        'cloud' (direct from GCS), or a custom path/URL pattern.
 
     Returns
     -------
     geopandas.GeoDataFrame
         Matching catalog items with asset_href for data access
     """
+    # Resolve catalog path
+    if catalog_path == 'local':
+        catalog_path = get_bedmap_catalog_path()
+    elif catalog_path == 'cloud':
+        catalog_path = 'gs://opr_stac/bedmap/bedmap*.parquet'
+
     search_params = {}
 
     # Exclude geometry
@@ -337,8 +344,8 @@ def query_bedmap(
     properties: Optional[Dict] = None,
     max_rows: Optional[int] = None,
     columns: Optional[List[str]] = None,
-    catalog_path: str = 'gs://opr_stac/bedmap/bedmap*.parquet',
-    exclude_geometry: bool = True
+    exclude_geometry: bool = True,
+    catalog_path: str = 'local',
 ) -> gpd.GeoDataFrame:
     """
     Query bedmap data from GeoParquet catalogs and return filtered data.
@@ -362,10 +369,11 @@ def query_bedmap(
         Maximum number of rows to return
     columns : list of str, optional
         Specific columns to retrieve
-    catalog_path : str
-        Path pattern to STAC GeoParquet catalog files (bedmap1/2/3.parquet)
     exclude_geometry : bool, default True
         If True, don't create geometry column (keeps lat/lon as separate columns)
+    catalog_path : str, default 'local'
+        Catalog source: 'local' (cached, downloaded on first use),
+        'cloud' (direct from GCS), or a custom path/URL pattern.
 
     Returns
     -------
@@ -384,11 +392,11 @@ def query_bedmap(
     """
     # Query catalog for matching items using rustac
     catalog_items = query_bedmap_catalog(
-        catalog_path=catalog_path,
         collections=collections,
         geometry=geometry,
         date_range=date_range,
-        properties=properties
+        properties=properties,
+        catalog_path=catalog_path,
     )
 
     if catalog_items.empty:
