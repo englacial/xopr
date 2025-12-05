@@ -65,14 +65,15 @@ jobs:
       run: uv python install 3.12
 
     - name: Install dependencies
-      run: uv sync --extra docs
+      run: uv sync --extra docs --extra stac
 
     - name: Build MyST Documentation
       run: |
         cd docs
         BASE_URL=/xopr uv run --extra docs myst build --html --execute 2>&1 | tee myst-build.log
         # Check for errors running the notebooks and fail if any are found
-        if grep -r "Error\\|Exception\\|Traceback" myst-build.log; then
+        # Exclude "Exception opening new comm" which is a benign Jupyter widget warning
+        if grep -E "Error|Exception|Traceback" myst-build.log | grep -v "Exception opening new comm"; then
           echo "Found execution errors in build"
           exit 1
         fi
@@ -82,6 +83,11 @@ jobs:
           cp -r _build/site/public/* _build/html/
           echo "Copied MyST output from _build/site/public to _build/html"
         fi
+
+    - name: Build API Documentation with pdoc
+      run: |
+        uv run --extra docs --extra stac pdoc -o docs/_build/html/api --docformat numpy src/xopr
+        echo "API documentation generated at docs/_build/html/api/"
 
     - name: Download coverage artifacts
       uses: actions/download-artifact@v4
