@@ -19,7 +19,7 @@ dependencies = [
     "geoviews",
     "shapely",
     "geopandas",
-    "h5py",
+    "h5py>=3.9",
     "fsspec",
     "dask[distributed]",
     "rustac>=0.6.0",
@@ -46,7 +46,7 @@ docs = [
     "hvplot",
     "jupyter_bokeh",
     "rioxarray",
-    "verde"
+    "verde",
     "pdoc>=14.0.0",
 ]
 test = [
