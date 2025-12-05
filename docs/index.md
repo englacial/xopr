@@ -52,6 +52,10 @@ For details on the initial design planning of xopr, please see [this OPR wiki pa
 
 For current design and terminology, see the [design notes](https://docs.englacial.org/xopr/design/) page.
 
+## API Reference
+
+Full API documentation for all xopr modules is available in the [API Reference](api/xopr.html).
+
 :::{figure} img/opr-data-access-infra-1.png
 :align: center
 :width: 80%

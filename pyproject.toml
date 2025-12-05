@@ -44,6 +44,7 @@ docs = [
     "jupyterlab",
     "hvplot",
     "jupyter_bokeh",
+    "pdoc>=14.0.0",
 ]
 test = [
     "pytest",
