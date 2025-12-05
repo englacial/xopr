@@ -248,9 +248,17 @@ def query_bedmap_catalog(
 
         search_params['intersects'] = geom_dict
 
-    # Handle date range filtering
+    # Note: The bedmap STAC catalogs currently don't have datetime fields,
+    # so temporal filtering at the catalog level is not supported.
+    # Date filtering can be applied later in the DuckDB query step if the
+    # data files have timestamp columns.
     if date_range is not None:
-        search_params['datetime'] = date_range
+        warnings.warn(
+            "Temporal filtering (date_range) is not supported at the catalog level "
+            "for bedmap data. The date_range parameter will be applied during "
+            "the data query step if timestamp columns are available.",
+            UserWarning
+        )
 
     # Handle max_items
     if max_items is not None:

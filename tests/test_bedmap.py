@@ -22,19 +22,17 @@ from xopr.bedmap import (
     parse_bedmap_metadata,
     convert_bedmap_csv,
     query_bedmap_local,
-    match_bedmap_to_opr,
-    compare_with_opr,
+    _transformer_to_polar,
+    _transformer_from_polar,
 )
 from xopr.bedmap.converter import _extract_bedmap_version, create_timestamps
 from xopr.bedmap.geometry import (
     calculate_bbox,
-    transform_coords_to_polar,
-    transform_coords_from_polar,
-    transform_geometry_to_polar,
     get_polar_bounds,
     check_intersects_polar,
 )
 from xopr.bedmap.query import build_duckdb_query, _crosses_antimeridian
+from shapely.ops import transform as shapely_transform
 
 
 # =============================================================================
@@ -64,17 +62,6 @@ def sample_bedmap_gdf(sample_bedmap_df):
         ),
         crs='EPSG:4326'
     )
-
-
-@pytest.fixture
-def sample_opr_dataset():
-    """Sample OPR xarray Dataset for comparison tests."""
-    return xr.Dataset({
-        'Longitude': (('slow_time',), [-70.001, -70.101, -70.201]),
-        'Latitude': (('slow_time',), [-75.001, -75.101, -75.201]),
-        'Surface': (('slow_time',), [1005.0, 1015.0, 1025.0]),
-        'Bottom': (('slow_time',), [505.0, 505.0, 505.0]),
-    })
 
 
 @pytest.fixture
@@ -178,12 +165,12 @@ class TestPolarProjection:
     def test_transform_coords_to_polar(self):
         """Test WGS84 to EPSG:3031 coordinate transformation."""
         # South Pole should map to origin (0, 0)
-        x, y = transform_coords_to_polar(0, -90)
+        x, y = _transformer_to_polar.transform(0, -90)
         assert abs(x) < 1  # Should be very close to 0
         assert abs(y) < 1
 
         # A point at lon=0, lat=-70 should have x≈0 and y>0 (north of pole)
-        x, y = transform_coords_to_polar(0, -70)
+        x, y = _transformer_to_polar.transform(0, -70)
         assert abs(x) < 1000  # x should be near 0 for lon=0
         assert y > 0  # y should be positive (north of pole in this projection)
 
@@ -191,8 +178,8 @@ class TestPolarProjection:
         """Test coordinate transform round-trip accuracy."""
         lon_orig, lat_orig = 170.0, -75.0
 
-        x, y = transform_coords_to_polar(lon_orig, lat_orig)
-        lon_back, lat_back = transform_coords_from_polar(x, y)
+        x, y = _transformer_to_polar.transform(lon_orig, lat_orig)
+        lon_back, lat_back = _transformer_from_polar.transform(x, y)
 
         assert abs(lon_orig - lon_back) < 0.0001
         assert abs(lat_orig - lat_back) < 0.0001
@@ -202,7 +189,7 @@ class TestPolarProjection:
         lons = np.array([0, 90, 180, -90])
         lats = np.array([-70, -70, -70, -70])
 
-        xs, ys = transform_coords_to_polar(lons, lats)
+        xs, ys = _transformer_to_polar.transform(lons, lats)
 
         assert len(xs) == 4
         assert len(ys) == 4
@@ -215,7 +202,7 @@ class TestPolarProjection:
         # Create a box near the antimeridian
         geom = box(170, -80, -170, -70)  # Crosses antimeridian
 
-        polar_geom = transform_geometry_to_polar(geom)
+        polar_geom = shapely_transform(_transformer_to_polar.transform, geom)
 
         # Polar geometry should be valid and not empty
         assert polar_geom is not None
@@ -576,70 +563,6 @@ class TestQuery:
         assert 'file3.parquet' in query
 
 
-class TestCompare:
-    """Test comparison functions."""
-
-    def test_match_bedmap_to_opr(self):
-        """Test matching bedmap points to OPR data."""
-
-        # Create test bedmap data
-        bedmap = gpd.GeoDataFrame({
-            'longitude (degree_east)': [-70, -65, -60],
-            'latitude (degree_north)': [-70, -72, -74],
-            'surface_altitude (m)': [1000, 1100, 1200],
-        })
-
-        # Create test OPR dataset
-        opr = xr.Dataset({
-            'Longitude': (('slow_time',), [-70.001, -65.002, -60.001]),
-            'Latitude': (('slow_time',), [-70.001, -72.002, -74.001]),
-            'Surface': (('slow_time',), [1005, 1105, 1205]),
-        })
-
-        matched = match_bedmap_to_opr(bedmap, opr, max_distance_m=1000)
-
-        assert 'opr_match_distance_m' in matched.columns
-        assert 'is_matched' in matched.columns
-        assert matched['is_matched'].all()  # All should be matched within tolerance
-        assert (matched['opr_match_distance_m'] < 1000).all()
-
-    def test_compare_with_opr_statistics(self):
-        """Test comparison statistics calculation."""
-
-        # Create test data
-        bedmap = gpd.GeoDataFrame({
-            'longitude (degree_east)': [-70, -65],
-            'latitude (degree_north)': [-70, -72],
-            'surface_altitude (m)': [1000, 1100],
-            'bedrock_altitude (m)': [500, 600],
-            'land_ice_thickness (m)': [500, 500],
-        })
-
-        # Create OPR data with small differences
-        opr_surface = xr.DataArray(
-            [[1005, 1095]],
-            dims=['y', 'x'],
-            coords={'x': [-70, -65], 'y': [-70]}
-        )
-
-        opr_bed = xr.DataArray(
-            [[505, 595]],
-            dims=['y', 'x'],
-            coords={'x': [-70, -65], 'y': [-70]}
-        )
-
-        results = compare_with_opr(bedmap, opr_surface, opr_bed)
-
-        assert 'statistics' in results
-        assert 'surface' in results['statistics']
-        assert 'bed' in results['statistics']
-        assert 'thickness' in results['statistics']
-
-        # Check that differences are calculated
-        assert 'differences' in results
-        assert 'matched_data' in results
-
-
 class TestCatalog:
     """Test catalog generation functions."""
 
@@ -867,170 +790,6 @@ class TestQueryAdvanced:
         # Should add lon/lat extraction
         assert 'ST_X(geometry) as lon' in query
         assert 'ST_Y(geometry) as lat' in query
-
-
-class TestCompareAdvanced:
-    """Additional comparison tests for better coverage."""
-
-    def test_get_lon_lat_columns_new_format(self):
-        """Test column detection for new format (lon/lat)."""
-        from xopr.bedmap.compare import _get_lon_lat_columns
-
-        df = pd.DataFrame({'lon': [1, 2], 'lat': [3, 4], 'data': [5, 6]})
-        lon_col, lat_col = _get_lon_lat_columns(df)
-
-        assert lon_col == 'lon'
-        assert lat_col == 'lat'
-
-    def test_get_lon_lat_columns_old_format(self):
-        """Test column detection for old format."""
-        from xopr.bedmap.compare import _get_lon_lat_columns
-
-        df = pd.DataFrame({
-            'longitude (degree_east)': [1, 2],
-            'latitude (degree_north)': [3, 4],
-            'data': [5, 6]
-        })
-        lon_col, lat_col = _get_lon_lat_columns(df)
-
-        assert lon_col == 'longitude (degree_east)'
-        assert lat_col == 'latitude (degree_north)'
-
-    def test_get_lon_lat_columns_error(self):
-        """Test column detection with invalid columns."""
-        from xopr.bedmap.compare import _get_lon_lat_columns
-
-        df = pd.DataFrame({'x': [1, 2], 'y': [3, 4]})
-
-        with pytest.raises(ValueError, match="Could not find"):
-            _get_lon_lat_columns(df)
-
-    def test_match_bedmap_to_opr_with_bottom(self):
-        """Test matching with Bottom layer included."""
-
-        bedmap = gpd.GeoDataFrame({
-            'longitude (degree_east)': [-70],
-            'latitude (degree_north)': [-70],
-            'surface_altitude (m)': [1000],
-            'bedrock_altitude (m)': [500],
-        })
-
-        opr = xr.Dataset({
-            'Longitude': (('slow_time',), [-70.001]),
-            'Latitude': (('slow_time',), [-70.001]),
-            'Surface': (('slow_time',), [1005]),
-            'Bottom': (('slow_time',), [505]),
-        })
-
-        matched = match_bedmap_to_opr(bedmap, opr, max_distance_m=1000)
-
-        assert 'opr_bottom' in matched.columns
-        assert matched['opr_bottom'].iloc[0] == 505
-
-    def test_compare_with_opr_no_statistics(self):
-        """Test comparison without computing statistics."""
-
-        bedmap = gpd.GeoDataFrame({
-            'longitude (degree_east)': [-70],
-            'latitude (degree_north)': [-70],
-            'surface_altitude (m)': [1000],
-            'bedrock_altitude (m)': [500],
-            'land_ice_thickness (m)': [500],
-        })
-
-        opr_surface = xr.DataArray(
-            [[1005]],
-            dims=['y', 'x'],
-            coords={'x': [-70], 'y': [-70]}
-        )
-
-        results = compare_with_opr(bedmap, opr_surface, compute_statistics=False)
-
-        assert results['statistics'] == {}
-        assert 'surface' in results['differences']
-
-    def test_compare_with_opr_missing_columns(self):
-        """Test comparison with missing surface/bed columns."""
-
-        bedmap = gpd.GeoDataFrame({
-            'longitude (degree_east)': [-70],
-            'latitude (degree_north)': [-70],
-        })
-
-        # Should warn about missing columns
-        with pytest.warns(UserWarning):
-            results = compare_with_opr(bedmap)
-
-        assert results['matched_data'] is not None
-
-    def test_create_crossover_analysis(self):
-        """Test crossover analysis between bedmap and OPR tracks."""
-        from xopr.bedmap.compare import create_crossover_analysis
-
-        bedmap = gpd.GeoDataFrame({
-            'longitude (degree_east)': [-70, -71],
-            'latitude (degree_north)': [-70, -71],
-            'surface_altitude (m)': [1000, 1100],
-            'bedrock_altitude (m)': [500, 550],
-            'source_file': ['file1', 'file2'],
-        })
-
-        opr_track = xr.Dataset({
-            'Longitude': (('slow_time',), [-70.001, -71.001]),
-            'Latitude': (('slow_time',), [-70.001, -71.001]),
-            'Surface': (('slow_time',), [1005, 1105]),
-            'Bottom': (('slow_time',), [505, 555]),
-        })
-
-        result = create_crossover_analysis(bedmap, [opr_track], crossover_threshold_m=5000)
-
-        assert len(result) == 2
-        assert 'bedmap_id' in result.columns
-        assert 'distance_m' in result.columns
-        assert 'surface_diff' in result.columns
-        assert 'bed_diff' in result.columns
-
-    def test_aggregate_comparisons_by_region(self):
-        """Test aggregating comparison results by region."""
-        from xopr.bedmap.compare import aggregate_comparisons_by_region
-
-        # Create mock comparison results
-        matched_data = gpd.GeoDataFrame({
-            'longitude (degree_east)': [-70, -71, -120],
-            'latitude (degree_north)': [-75, -76, -75],
-            'surface_diff_m': [5, 10, 15],
-            'bed_diff_m': [8, 12, 20],
-        }, geometry=[Point(-70, -75), Point(-71, -76), Point(-120, -75)], crs='EPSG:4326')
-
-        comparison_results = {'matched_data': matched_data}
-
-        # Create regions
-        regions = gpd.GeoDataFrame({
-            'name': ['West Antarctica', 'East Antarctica'],
-        }, geometry=[
-            box(-130, -85, -60, -70),  # West Antarctica
-            box(0, -85, 180, -60),     # East Antarctica
-        ], crs='EPSG:4326')
-
-        result = aggregate_comparisons_by_region(comparison_results, regions, region_name_col='name')
-
-        assert len(result) == 1  # Only West Antarctica has points
-        assert result.iloc[0]['region'] == 'West Antarctica'
-        assert result.iloc[0]['n_points'] == 3
-
-    def test_aggregate_comparisons_by_region_empty(self):
-        """Test aggregation with empty matched data."""
-        from xopr.bedmap.compare import aggregate_comparisons_by_region
-
-        comparison_results = {'matched_data': gpd.GeoDataFrame()}
-
-        regions = gpd.GeoDataFrame({
-            'name': ['Region1'],
-        }, geometry=[box(-80, -80, -70, -70)], crs='EPSG:4326')
-
-        result = aggregate_comparisons_by_region(comparison_results, regions, region_name_col='name')
-
-        assert len(result) == 0
 
 
 class TestConverterAdvancedCoverage:

@@ -9,17 +9,23 @@ This module handles:
 - Extracting spatial and temporal bounds
 """
 
+import io
 import json
-import pandas as pd
-import numpy as np
+import time
+import warnings
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, Optional, Tuple, List, Union
+
+import duckdb
 import geopandas as gpd
+import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.csv as pa_csv
 import pyarrow.parquet as pq
-from pathlib import Path
-from typing import Dict, Optional, Tuple, List, Union
-from datetime import datetime, timezone
-import warnings
+from tqdm import tqdm
 
 from .geometry import (
     extract_flight_lines,
@@ -57,7 +63,6 @@ def _write_geoparquet_with_metadata(
         Row group size for parquet file
     """
     # First write to a temporary buffer to get the arrow table with geo metadata
-    import io
     buffer = io.BytesIO()
     gdf.to_parquet(buffer, compression=compression)
     buffer.seek(0)
@@ -359,9 +364,6 @@ def _apply_hilbert_sorting(gdf: gpd.GeoDataFrame, verbose: bool = True) -> gpd.G
     geopandas.GeoDataFrame
         Sorted GeoDataFrame
     """
-    import duckdb
-    import time
-
     row_count = len(gdf)
     if verbose:
         print(f"    Hilbert sort: extracting {row_count:,} coordinates...")
@@ -442,8 +444,6 @@ def convert_bedmap_csv(
     dict
         Dictionary containing metadata and bounds information
     """
-    import time
-
     csv_path = Path(csv_path)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -639,9 +639,6 @@ def batch_convert_bedmap(
     metadata_list = []
 
     if parallel and len(csv_files) > 1:
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-        from tqdm import tqdm
-
         with ProcessPoolExecutor(max_workers=n_workers) as executor:
             futures = {
                 executor.submit(convert_bedmap_csv, csv_file, output_dir): csv_file
@@ -659,8 +656,6 @@ def batch_convert_bedmap(
 
     else:
         # Sequential processing
-        from tqdm import tqdm
-
         for csv_file in tqdm(csv_files, desc="Converting files"):
             try:
                 metadata = convert_bedmap_csv(csv_file, output_dir)
