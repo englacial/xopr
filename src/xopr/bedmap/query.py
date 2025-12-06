@@ -511,6 +511,7 @@ def query_bedmap(
     catalog_path: str = 'local',
     local_cache: bool = False,
     data_dir: Optional[Union[str, Path]] = None,
+    show_progress: bool = False,
 ) -> gpd.GeoDataFrame:
     """
     Query bedmap data from GeoParquet catalogs and return filtered data.
@@ -545,6 +546,9 @@ def query_bedmap(
         Recommended for repeated queries in loops.
     data_dir : str or Path, optional
         Directory for local data cache. Defaults to radar_cache/bedmap/
+    show_progress : bool, default False
+        If True, show DuckDB progress bar during queries. Disabled by default
+        to avoid IOPub rate limit errors in Jupyter notebooks.
 
     Returns
     -------
@@ -575,6 +579,7 @@ def query_bedmap(
             max_rows=max_rows,
             exclude_geometry=exclude_geometry,
             data_dir=data_dir,
+            show_progress=show_progress,
         )
 
     # Query catalog for matching items using rustac
@@ -637,8 +642,8 @@ def query_bedmap(
 
     conn = duckdb.connect()
     try:
-        # Disable progress bar to avoid IOPub rate limit in notebooks
-        conn.execute("SET enable_progress_bar = false")
+        if not show_progress:
+            conn.execute("SET enable_progress_bar = false")
         # Enable cloud storage and spatial extension support
         conn.execute("INSTALL httpfs; LOAD httpfs;")
         conn.execute("INSTALL spatial; LOAD spatial;")
@@ -677,11 +682,13 @@ def _query_bedmap_cached(
     max_rows: Optional[int] = None,
     exclude_geometry: bool = True,
     data_dir: Optional[Union[str, Path]] = None,
+    show_progress: bool = False,
 ) -> gpd.GeoDataFrame:
     """
     Query bedmap data from locally cached files.
 
     Internal helper that fetches data if needed and queries local files.
+    Uses STAC catalog to pre-filter files when geometry is provided.
     """
     data_dir = Path(data_dir) if data_dir else DEFAULT_BEDMAP_DATA_DIR
 
@@ -697,14 +704,36 @@ def _query_bedmap_cached(
         return gpd.GeoDataFrame()
 
     # Check if data directory has files, if not download them
-    parquet_paths = []
     if not data_dir.exists() or not list(data_dir.glob('*.parquet')):
         print("No cached data files found, downloading...")
         for ver in versions:
             fetch_bedmap(version=ver, data_dir=data_dir)
 
-    # Get all parquet files from data directory
-    if data_dir.exists():
+    # Use STAC catalog to pre-filter files when geometry is provided
+    # This is much faster than querying all files
+    parquet_paths = []
+    if geometry is not None:
+        # Query catalog to find matching files
+        catalog_items = query_bedmap_catalog(
+            collections=versions,
+            geometry=geometry,
+            date_range=date_range,
+        )
+
+        if not catalog_items.empty:
+            # Map catalog items to local file paths
+            for idx, item in catalog_items.iterrows():
+                props = item.get('properties', {})
+                if isinstance(props, dict):
+                    href = props.get('asset_href', '')
+                    if href:
+                        fname = href.split('/')[-1]
+                        local_path = data_dir / fname
+                        if local_path.exists():
+                            parquet_paths.append(str(local_path))
+
+    # Fall back to all files if no geometry filter or no catalog matches
+    if not parquet_paths and data_dir.exists():
         parquet_paths = [str(p) for p in sorted(data_dir.glob('*.parquet'))]
 
     if not parquet_paths:
@@ -722,8 +751,8 @@ def _query_bedmap_cached(
 
     conn = duckdb.connect()
     try:
-        # Disable progress bar to avoid IOPub rate limit in notebooks
-        conn.execute("SET enable_progress_bar = false")
+        if not show_progress:
+            conn.execute("SET enable_progress_bar = false")
         conn.execute("INSTALL spatial; LOAD spatial;")
         result_df = conn.execute(query).df()
     except Exception as e:
