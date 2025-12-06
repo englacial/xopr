@@ -1,3 +1,10 @@
+"""
+General utility functions for xOPR
+
+This module provides helper functions for data comparison, dictionary merging,
+and metadata retrieval that are used throughout xOPR.
+"""
+
 import itertools
 import json
 from typing import Any, Dict, List, Optional, Sequence, TypeVar
@@ -147,13 +154,17 @@ def merge_dicts_no_conflicts(dicts: List[Dict[str, Any]], context=None) -> Dict[
 
 def get_ror_display_name(ror_id: str) -> Optional[str]:
     """
-    Parse ROR API response to find the for_display name of a given ROR ID.
+    Fetch institution display name from ROR API.
 
-    Args:
-        ror_id (str): The ROR identifier (e.g., "https://ror.org/02jx3x895" or just "02jx3x895")
+    Parameters
+    ----------
+    ror_id : str
+        ROR identifier (full URL or just ID, e.g., "02jx3x895").
 
-    Returns:
-        Optional[str]: The for_display name if found, None otherwise
+    Returns
+    -------
+    str or None
+        Institution display name, or None if request fails.
     """
     # Clean the ROR ID - extract just the identifier part if full URL is provided
     if ror_id.startswith('https://ror.org/'):

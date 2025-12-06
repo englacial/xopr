@@ -1,3 +1,11 @@
+"""
+Helper functions for working with OPR radar datasets.
+
+This module provides utility functions for common operations on radar datasets,
+including merging frames from the same flight segment, generating citations, and
+finding crossover points between flight lines.
+"""
+
 import warnings
 from typing import Iterable, Union
 
@@ -9,18 +17,20 @@ from xopr.util import get_ror_display_name, merge_dicts_no_conflicts
 
 def merge_frames(frames: Iterable[xr.Dataset]) -> Union[list[xr.Dataset], xr.Dataset]:
     """
-    Merge a set of radar frames into a list of merged xarray Datasets. Frames from the
-    same segment (typically a flight) are concatenated along the 'slow_time' dimension.
+    Merge radar frames by segment.
+
+    Frames from the same segment are concatenated along slow_time and sorted.
 
     Parameters
     ----------
     frames : Iterable[xr.Dataset]
-        An iterable of xarray Datasets representing radar frames.
+        Radar frame Datasets to merge.
 
     Returns
     -------
-    list[xr.Dataset] or xr.Dataset
-        List of merged xarray Datasets or a single merged Dataset if there is only one segment.
+    xr.Dataset or list[xr.Dataset]
+        Single merged Dataset if all frames are from one segment, otherwise
+        list of Datasets (one per segment).
     """
     segments = {}
 
@@ -59,17 +69,18 @@ def merge_frames(frames: Iterable[xr.Dataset]) -> Union[list[xr.Dataset], xr.Dat
 
 def generate_citation(ds : xr.Dataset) -> str:
         """
-        Generate a citation string for the dataset based on its attributes.
+        Generate citation and acknowledgment text for dataset.
 
         Parameters
         ----------
         ds : xr.Dataset
-            The xarray Dataset containing metadata.
+            Dataset with doi, ror, and funder_text attributes.
 
         Returns
         -------
         str
-            A formatted citation string.
+            Formatted citation string including data citation, DOI, funding
+            acknowledgments, and OPR toolbox citation.
         """
 
         citation_string = ""
@@ -113,21 +124,24 @@ def find_intersections(gdf : gpd.GeoDataFrame, remove_self_intersections: bool =
                         remove_adjacent_intersections: bool = True,
                         calculate_crossing_angles: bool = False) -> gpd.GeoDataFrame:
     """
-    Find intersections between geometries in a GeoDataFrame.
+    Find crossover points between radar flight lines.
 
     Parameters
     ----------
     gdf : gpd.GeoDataFrame
-        A GeoDataFrame containing geometries to check for intersections.
+        GeoDataFrame of STAC items with flight line geometries.
     remove_self_intersections : bool, optional
-        If True, remove self-intersections (a geometry intersecting with itself), by default True.
+        If True, exclude geometry intersecting with itself.
     remove_adjacent_intersections : bool, optional
-        If True, remove intersections between adjacent geometries (e.g., consecutive frames in a flight line), by default True.
+        If True, exclude consecutive frames in same flight line.
+    calculate_crossing_angles : bool, optional
+        If True, calculate and include crossing angles in degrees.
 
     Returns
     -------
     gpd.GeoDataFrame
-        A GeoDataFrame containing pairs of intersecting geometries.
+        GeoDataFrame with columns for intersecting pairs (id_1, id_2),
+        intersection_geometry, and optionally crossing_angle.
     """
 
     tmp_df = gdf.reset_index()

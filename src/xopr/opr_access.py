@@ -128,8 +128,8 @@ class OPRConnection:
         """
         Query STAC catalog for radar frames matching search criteria.
 
-        Multiple parameters are combined with AND logic. Lists of values are
-        treated with OR logic (any value matches).
+        Multiple parameters are combined with AND logic. Lists of values passed to a
+        single parameter are treated with OR logic (any value matches).
 
         Parameters
         ----------
@@ -325,7 +325,7 @@ class OPRConnection:
 
     def load_frame(self, stac_item, data_product: str = "CSARP_standard") -> xr.Dataset:
         """
-        Load a single radar frame from STAC item.
+        Load a single radar frame from a STAC item.
 
         Parameters
         ----------
@@ -359,7 +359,7 @@ class OPRConnection:
 
     def load_frame_url(self, url: str) -> xr.Dataset:
         """
-        Load radar frame directly from URL.
+        Load a radar frame directly from a URL.
 
         Automatically detects and handles both HDF5 and legacy MATLAB formats.
 
