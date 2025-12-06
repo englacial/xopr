@@ -9,11 +9,11 @@ cloud-optimized GeoParquet files.
 import duckdb
 import geopandas as gpd
 import numpy as np
+import requests
 from typing import Optional, List, Dict, Tuple, Union
 from datetime import datetime
 from pathlib import Path
 import warnings
-import fsspec
 
 import antimeridian
 import shapely
@@ -27,27 +27,57 @@ from .geometry import (
 from ..stac_cache import get_bedmap_catalog_path
 
 
-# Cloud URLs for bedmap data files
-BEDMAP_DATA_URLS = {
-    'bedmap1': 'gs://opr_stac/bedmap/data/bedmap1.parquet',
-    'bedmap2': 'gs://opr_stac/bedmap/data/bedmap2.parquet',
-    'bedmap3': 'gs://opr_stac/bedmap/data/bedmap3.parquet',
+# Cloud URLs for bedmap STAC catalog files
+BEDMAP_CATALOG_URLS = {
+    'bedmap1': 'gs://opr_stac/bedmap/bedmap1.parquet',
+    'bedmap2': 'gs://opr_stac/bedmap/bedmap2.parquet',
+    'bedmap3': 'gs://opr_stac/bedmap/bedmap3.parquet',
 }
 
-# Default cache directory (matches OPRConnection convention)
-DEFAULT_BEDMAP_CACHE_DIR = Path.home() / '.cache' / 'xopr' / 'bedmap'
+# Default cache directories
+# STAC catalogs go to ~/.cache/xopr/bedmap (same as stac_cache module)
+DEFAULT_STAC_CACHE_DIR = Path.home() / '.cache' / 'xopr' / 'bedmap'
+
+# Data files go to radar_cache/bedmap (matches OPRConnection convention)
+# OPRConnection uses cache_dir="radar_cache" for fsspec caching;
+# bedmap data goes in a "bedmap" subdirectory within that same cache
+DEFAULT_RADAR_CACHE = Path('radar_cache')
+DEFAULT_BEDMAP_DATA_DIR = DEFAULT_RADAR_CACHE / 'bedmap'
+
+
+def _gs_to_https(gs_url: str) -> str:
+    """Convert gs:// URL to public https:// URL for anonymous access."""
+    if gs_url.startswith('gs://'):
+        # gs://bucket/path -> https://storage.googleapis.com/bucket/path
+        return gs_url.replace('gs://', 'https://storage.googleapis.com/', 1)
+    return gs_url
+
+
+def _download_file(url: str, local_path: Path) -> bool:
+    """Download a file from URL to local path. Returns True on success."""
+    https_url = _gs_to_https(url)
+    try:
+        response = requests.get(https_url, stream=True)
+        response.raise_for_status()
+        with open(local_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        return True
+    except Exception as e:
+        warnings.warn(f"Failed to download {url}: {e}")
+        return False
 
 
 def fetch_bedmap(
     version: str = 'all',
-    cache_dir: Optional[Union[str, Path]] = None,
+    data_dir: Optional[Union[str, Path]] = None,
     force: bool = False
-) -> Dict[str, Path]:
+) -> Dict[str, List[Path]]:
     """
     Download bedmap GeoParquet data files to local cache.
 
-    Downloads bedmap data files from cloud storage to local disk for faster
-    repeated queries. Useful when executing many queries in a loop.
+    Reads the STAC catalog to get asset hrefs, then downloads all data files
+    for the requested bedmap version(s).
 
     Parameters
     ----------
@@ -55,22 +85,22 @@ def fetch_bedmap(
         Which bedmap version(s) to download:
         - 'all': Download all versions (bedmap1, bedmap2, bedmap3)
         - 'bedmap1', 'bedmap2', 'bedmap3': Download specific version
-    cache_dir : str or Path, optional
-        Directory to store downloaded files. Defaults to ~/.cache/xopr/bedmap
+    data_dir : str or Path, optional
+        Directory to store downloaded data files. Defaults to radar_cache/bedmap/
     force : bool, default False
         If True, re-download even if files already exist
 
     Returns
     -------
     dict
-        Mapping of version names to local file paths
+        Mapping of version names to lists of local file paths
 
     Examples
     --------
     >>> # Download all bedmap data
     >>> paths = fetch_bedmap()
-    >>> print(paths['bedmap2'])
-    /home/user/.cache/xopr/bedmap/bedmap2.parquet
+    >>> print(len(paths['bedmap2']))  # Number of files downloaded
+    45
 
     >>> # Download only bedmap3
     >>> paths = fetch_bedmap(version='bedmap3')
@@ -80,75 +110,82 @@ def fetch_bedmap(
     >>> for bbox in many_bboxes:
     ...     df = query_bedmap(geometry=bbox, local_cache=True)
     """
-    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_BEDMAP_CACHE_DIR
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    # Data files go to radar_cache/bedmap/ (matches OPRConnection convention)
+    data_dir = Path(data_dir) if data_dir else DEFAULT_BEDMAP_DATA_DIR
+    data_dir.mkdir(parents=True, exist_ok=True)
 
     # Determine which versions to download
+    valid_versions = list(BEDMAP_CATALOG_URLS.keys())
     if version == 'all':
-        versions = list(BEDMAP_DATA_URLS.keys())
-    elif version in BEDMAP_DATA_URLS:
+        versions = valid_versions
+    elif version in BEDMAP_CATALOG_URLS:
         versions = [version]
     else:
         raise ValueError(
             f"Unknown version '{version}'. "
-            f"Valid options: 'all', {list(BEDMAP_DATA_URLS.keys())}"
+            f"Valid options: 'all', {valid_versions}"
         )
 
     downloaded = {}
     for ver in versions:
-        url = BEDMAP_DATA_URLS[ver]
-        local_path = cache_dir / f'{ver}.parquet'
+        catalog_url = BEDMAP_CATALOG_URLS[ver]
+        print(f"{ver}: Reading STAC catalog to get data file locations...")
 
-        if local_path.exists() and not force:
-            print(f"{ver}: Using cached file at {local_path}")
-            downloaded[ver] = local_path
+        # Read catalog with DuckDB to extract asset_href column
+        https_catalog_url = _gs_to_https(catalog_url)
+        try:
+            conn = duckdb.connect()
+            query = f"SELECT asset_href FROM read_parquet('{https_catalog_url}')"
+            result = conn.execute(query).fetchall()
+            conn.close()
+            hrefs = [row[0] for row in result if row[0]]
+        except Exception as e:
+            warnings.warn(f"Failed to read catalog for {ver}: {e}")
             continue
 
-        print(f"{ver}: Downloading from {url}...")
-        try:
-            # Use fsspec to download from GCS
-            with fsspec.open(url, 'rb') as remote_file:
-                with open(local_path, 'wb') as local_file:
-                    local_file.write(remote_file.read())
-            print(f"{ver}: Saved to {local_path}")
-            downloaded[ver] = local_path
-        except Exception as e:
-            warnings.warn(f"Failed to download {ver}: {e}")
+        if not hrefs:
+            warnings.warn(f"No asset hrefs found in {ver} catalog")
+            continue
+
+        print(f"{ver}: Found {len(hrefs)} data files to download")
+
+        # Download each data file
+        downloaded_files = []
+        for href in hrefs:
+            filename = Path(href).name
+            local_path = data_dir / filename
+
+            if local_path.exists() and not force:
+                downloaded_files.append(local_path)
+                continue
+
+            if _download_file(href, local_path):
+                downloaded_files.append(local_path)
+                print(f"  Downloaded: {filename}")
+
+        downloaded[ver] = downloaded_files
+        print(f"{ver}: {len(downloaded_files)} files cached in {data_dir}")
 
     return downloaded
 
 
 def get_bedmap_cache_path(
-    version: Optional[str] = None,
-    cache_dir: Optional[Union[str, Path]] = None
-) -> Union[Path, Dict[str, Path]]:
+    data_dir: Optional[Union[str, Path]] = None
+) -> Path:
     """
-    Get paths to cached bedmap data files.
+    Get path to cached bedmap data directory.
 
     Parameters
     ----------
-    version : str, optional
-        Specific version to get path for. If None, returns all cached paths.
-    cache_dir : str or Path, optional
-        Cache directory to check. Defaults to ~/.cache/xopr/bedmap
+    data_dir : str or Path, optional
+        Data directory. Defaults to radar_cache/bedmap/
 
     Returns
     -------
-    Path or dict
-        Single path if version specified, otherwise dict of all cached paths
+    Path
+        Path to the data directory containing cached parquet files
     """
-    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_BEDMAP_CACHE_DIR
-
-    if version:
-        return cache_dir / f'{version}.parquet'
-
-    # Return all existing cached files
-    cached = {}
-    for ver in BEDMAP_DATA_URLS.keys():
-        path = cache_dir / f'{ver}.parquet'
-        if path.exists():
-            cached[ver] = path
-    return cached
+    return Path(data_dir) if data_dir else DEFAULT_BEDMAP_DATA_DIR
 
 
 def _crosses_antimeridian(geometry: shapely.geometry.base.BaseGeometry) -> bool:
@@ -472,7 +509,7 @@ def query_bedmap(
     exclude_geometry: bool = True,
     catalog_path: str = 'local',
     local_cache: bool = False,
-    cache_dir: Optional[Union[str, Path]] = None,
+    data_dir: Optional[Union[str, Path]] = None,
 ) -> gpd.GeoDataFrame:
     """
     Query bedmap data from GeoParquet catalogs and return filtered data.
@@ -505,8 +542,8 @@ def query_bedmap(
         If True, use locally cached bedmap data files for faster queries.
         Files will be downloaded automatically if not present.
         Recommended for repeated queries in loops.
-    cache_dir : str or Path, optional
-        Directory for local cache. Defaults to ~/.cache/xopr/bedmap
+    data_dir : str or Path, optional
+        Directory for local data cache. Defaults to radar_cache/bedmap/
 
     Returns
     -------
@@ -536,7 +573,7 @@ def query_bedmap(
             columns=columns,
             max_rows=max_rows,
             exclude_geometry=exclude_geometry,
-            cache_dir=cache_dir,
+            data_dir=data_dir,
         )
 
     # Query catalog for matching items using rustac
@@ -636,37 +673,36 @@ def _query_bedmap_cached(
     columns: Optional[List[str]] = None,
     max_rows: Optional[int] = None,
     exclude_geometry: bool = True,
-    cache_dir: Optional[Union[str, Path]] = None,
+    data_dir: Optional[Union[str, Path]] = None,
 ) -> gpd.GeoDataFrame:
     """
     Query bedmap data from locally cached files.
 
     Internal helper that fetches data if needed and queries local files.
     """
-    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_BEDMAP_CACHE_DIR
+    data_dir = Path(data_dir) if data_dir else DEFAULT_BEDMAP_DATA_DIR
 
     # Determine which versions to query
+    valid_versions = list(BEDMAP_CATALOG_URLS.keys())
     if collections:
-        versions = [c for c in collections if c in BEDMAP_DATA_URLS]
+        versions = [c for c in collections if c in valid_versions]
     else:
-        versions = list(BEDMAP_DATA_URLS.keys())
+        versions = valid_versions
 
     if not versions:
         warnings.warn("No valid bedmap versions specified")
         return gpd.GeoDataFrame()
 
-    # Check which files exist and download missing ones
+    # Check if data directory has files, if not download them
     parquet_paths = []
-    for ver in versions:
-        local_path = cache_dir / f'{ver}.parquet'
-        if not local_path.exists():
-            print(f"Downloading {ver} to local cache...")
-            fetch_bedmap(version=ver, cache_dir=cache_dir)
+    if not data_dir.exists() or not list(data_dir.glob('*.parquet')):
+        print("No cached data files found, downloading...")
+        for ver in versions:
+            fetch_bedmap(version=ver, data_dir=data_dir)
 
-        if local_path.exists():
-            parquet_paths.append(str(local_path))
-        else:
-            warnings.warn(f"Could not fetch {ver}")
+    # Get all parquet files from data directory
+    if data_dir.exists():
+        parquet_paths = [str(p) for p in sorted(data_dir.glob('*.parquet'))]
 
     if not parquet_paths:
         warnings.warn("No bedmap files available")
