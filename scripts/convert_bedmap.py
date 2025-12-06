@@ -75,12 +75,6 @@ Examples:
         help='Optional path to save conversion metadata JSON'
     )
 
-    parser.add_argument(
-        '--test',
-        action='store_true',
-        help='Test mode: only process first 3 files'
-    )
-
     args = parser.parse_args()
 
     # Expand paths
@@ -100,34 +94,13 @@ Examples:
     print(f"  Output directory: {output_dir}")
     print(f"  Pattern: {args.pattern}")
 
-    # In test mode, limit to first 3 files
-    if args.test:
-        print("  TEST MODE: Processing only first 3 files")
-        csv_files = sorted(input_dir.glob(args.pattern))[:3]
-
-        if not csv_files:
-            print(f"No CSV files found matching pattern '{args.pattern}'")
-            sys.exit(1)
-
-        # Convert each file individually for testing
-        metadata_list = []
-        from xopr.bedmap import convert_bedmap_csv
-
-        for csv_file in csv_files:
-            try:
-                metadata = convert_bedmap_csv(csv_file, output_dir)
-                metadata_list.append(metadata)
-            except Exception as e:
-                print(f"Error processing {csv_file.name}: {e}")
-    else:
-        # Full batch conversion
-        metadata_list = batch_convert_bedmap(
-            input_dir=input_dir,
-            output_dir=output_dir,
-            pattern=args.pattern,
-            parallel=args.parallel,
-            n_workers=args.workers
-        )
+    metadata_list = batch_convert_bedmap(
+        input_dir=input_dir,
+        output_dir=output_dir,
+        pattern=args.pattern,
+        parallel=args.parallel,
+        n_workers=args.workers
+    )
 
     if not metadata_list:
         print("Warning: No files were successfully converted")
