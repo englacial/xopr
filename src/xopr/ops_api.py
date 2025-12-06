@@ -1,7 +1,15 @@
 """
-This module provides functions to interact with part of the Open Polar Server (OPS) API
-that do not require authentication.
-It includes functions to retrieve segment IDs, layer points, and segment metadata.
+Interface to the Open Polar Server (OPS) database API.
+
+This module provides functions for accessing the OPS database without authentication.
+The OPS database stores layer picks (surface, bed, internal layers), segment metadata,
+and citation information for radar data.
+
+Functions use the general _ops_api_request helper to make requests to the OPS API.
+
+While we publicly expose these functions, they are primarily intended for internal use
+within the xOPR module. Consider using the higher-level xOPR data access functions in
+xopr.opr_access for loading radar data and metadata instead.
 """
 
 import base64
