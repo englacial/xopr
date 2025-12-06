@@ -135,6 +135,7 @@ def fetch_bedmap(
         https_catalog_url = _gs_to_https(catalog_url)
         try:
             conn = duckdb.connect()
+            conn.execute("SET enable_progress_bar = false")
             query = f"SELECT asset_href FROM read_parquet('{https_catalog_url}')"
             result = conn.execute(query).fetchall()
             conn.close()
@@ -636,6 +637,8 @@ def query_bedmap(
 
     conn = duckdb.connect()
     try:
+        # Disable progress bar to avoid IOPub rate limit in notebooks
+        conn.execute("SET enable_progress_bar = false")
         # Enable cloud storage and spatial extension support
         conn.execute("INSTALL httpfs; LOAD httpfs;")
         conn.execute("INSTALL spatial; LOAD spatial;")
@@ -719,6 +722,8 @@ def _query_bedmap_cached(
 
     conn = duckdb.connect()
     try:
+        # Disable progress bar to avoid IOPub rate limit in notebooks
+        conn.execute("SET enable_progress_bar = false")
         conn.execute("INSTALL spatial; LOAD spatial;")
         result_df = conn.execute(query).df()
     except Exception as e:
@@ -794,6 +799,8 @@ def query_bedmap_local(
 
     conn = duckdb.connect()
     try:
+        # Disable progress bar to avoid IOPub rate limit in notebooks
+        conn.execute("SET enable_progress_bar = false")
         # Load spatial extension for ST_X/ST_Y functions
         conn.execute("INSTALL spatial; LOAD spatial;")
         result_df = conn.execute(query).df()
