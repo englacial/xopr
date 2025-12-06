@@ -1,3 +1,13 @@
+"""
+Processing and transformation utilities for radar datasets.
+
+This module provides functions for common radar data processing tasks including
+coordinate transformations, along-track distance calculations, and vertical
+coordinate conversions between two-way travel time (TWTT), range, and elevation.
+
+"""
+
+import xarray as xr
 import numpy as np
 import scipy.constants
 import xarray as xr
@@ -7,13 +17,20 @@ from xopr.geometry import project_dataset
 
 def add_along_track(ds: xr.Dataset, projection: str = None) -> xr.Dataset:
     """
-    Add an along-track distance coordinate to the dataset based on the latitude and longitude coordinates.
+    Add cumulative along-track distance coordinate.
 
-    Parameters:
-    ds (xr.Dataset): Input xarray Dataset with 'Latitude' and 'Longitude' coordinates.
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset with Latitude and Longitude coordinates.
+    projection : str, optional
+        CRS for distance calculation. If None, uses EPSG:3031 (Antarctic)
+        or EPSG:3413 (Arctic) based on mean latitude.
 
-    Returns:
-    xr.Dataset: Dataset with an added 'along_track' coordinate.
+    Returns
+    -------
+    xr.Dataset
+        Dataset with added along_track coordinate in meters.
     """
 
     if 'Latitude' not in ds or 'Longitude' not in ds:
@@ -51,14 +68,21 @@ def add_along_track(ds: xr.Dataset, projection: str = None) -> xr.Dataset:
 
 def estimate_vertical_distances(ds: xr.Dataset, epsilon_ice: float = 3.15) -> xr.Dataset:
     """
-    Estimate vertical distances from two-way travel time (TWTT) using the speed of light in ice.
+    Convert TWTT (two-way travel time) to vertical distances accounting for propagation speed.
 
-    Parameters:
-    ds (xr.Dataset): Input xarray Dataset with TWTT layers as variables.
-    epsilon_ice (float): Relative permittivity of ice. Default is 3.15.
+    Uses speed of light in air above surface and speed of light in ice below.
 
-    Returns:
-    xr.Dataset: Dataset with added vertical distance variables for each TWTT layer.
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset with Data, twtt, and Surface variables.
+    epsilon_ice : float, optional
+        Relative permittivity of ice for subsurface propagation.
+
+    Returns
+    -------
+    xr.DataArray
+        Vertical distance from aircraft in meters.
     """
 
     v_ice = scipy.constants.c / np.sqrt(epsilon_ice)  # Speed of light in ice (m/s)
@@ -90,35 +114,39 @@ def estimate_vertical_distances(ds: xr.Dataset, epsilon_ice: float = 3.15) -> xr
 
 
 def interpolate_to_vertical_grid(ds: xr.Dataset,
+def interpolate_to_vertical_grid(ds: xr.Dataset,
                                   vertical_coordinate: str = 'range',
+                                  vert_min: float = None,
+                                  vert_max: float = None,
                                   vert_min: float = None,
                                   vert_max: float = None,
                                   vert_spacing: float = 10.0,
                                   epsilon_ice: float = 3.15) -> xr.Dataset:
     """
-    Interpolate radar data from TWTT coordinates to regular vertical distance coordinates.
+    Interpolate radar data to regular vertical grid.
 
-    Parameters:
-    -----------
+    Converts from irregular TWTT spacing to uniform range or elevation grid.
+
+    Parameters
+    ----------
     ds : xr.Dataset
-        Input dataset with 'Data' variable, 'along_track' coordinate, and 'Surface' variable
-    vertical_coordinate : str
-        The vertical coordinate to use for interpolation. 'range' will interpolate to the
-        vertical range from the instrument. 'wgs84' will interpolate to WGS84 elevation
-        using the 'Elevation' variable in the dataset. Default is 'range'.
-    vert_min : float
-        Minimum vertical distance in meters, if None, uses minimum from data
-    vert_max : float
-        Maximum vertical distance in meters, if None, uses maximum from data
-    vert_spacing : float
-        Vertical spacing in meters
-    epsilon_ice : float
-        Relative permittivity of ice (default 3.15)
+        Dataset with Data, Surface, and optionally Elevation variables.
+    vertical_coordinate : {'range', 'wgs84'}, optional
+        Target vertical coordinate system.
+    vert_min : float, optional
+        Minimum vertical distance in meters. If None, uses data minimum.
+    vert_max : float, optional
+        Maximum vertical distance in meters. If None, uses data maximum.
+    vert_spacing : float, optional
+        Vertical grid spacing in meters.
+    epsilon_ice : float, optional
+        Relative permittivity of ice.
 
-    Returns:
-    --------
+    Returns
+    -------
     xr.Dataset
-        Dataset with data interpolated to regular vertical distance grid
+        Dataset with Data interpolated to regular vertical grid with coordinate
+        'range' or 'wgs84'.
     """
 
     # Calculate vertical distances
@@ -199,23 +227,23 @@ def interpolate_to_vertical_grid(ds: xr.Dataset,
 
 def layer_twtt_to_range(layer_ds, surface_layer_ds, vertical_coordinate='range', subsurface_dielectric_permittivity=3.15):
     """
-    Convert layer two-way travel time (TWTT) to range or elevation coordinates.
+    Convert layer TWTT to range or elevation coordinates.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     layer_ds : xr.Dataset
-        Dataset containing layer TWTT values
+        Layer dataset with twtt variable.
     surface_layer_ds : xr.Dataset
-        Dataset containing surface layer TWTT values (typically layer 1)
-    vertical_coordinate : str
-        'range' for distance from aircraft or 'elevation'/'wgs84' for WGS84 elevation
-    subsurface_dielectric_permittivity : float
-        Dielectric permittivity for subsurface propagation (default 3.15 for ice)
+        Surface layer dataset with twtt and optionally elev variables.
+    vertical_coordinate : {'range', 'elevation', 'wgs84'}, optional
+        Target coordinate system.
+    subsurface_dielectric_permittivity : float, optional
+        Dielectric permittivity for subsurface propagation.
 
-    Returns:
-    --------
+    Returns
+    -------
     xr.Dataset
-        Copy of layer_ds with added 'range' or 'wgs84' field containing layer positions
+        Copy of layer_ds with added 'range' or 'wgs84' variable.
     """
     # Create a copy of the layer dataset
     result_ds = layer_ds.copy()
