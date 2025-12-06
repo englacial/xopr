@@ -13,6 +13,7 @@ from typing import Optional, List, Dict, Tuple, Union
 from datetime import datetime
 from pathlib import Path
 import warnings
+import fsspec
 
 import antimeridian
 import shapely
@@ -24,6 +25,130 @@ from .geometry import (
     get_polar_bounds,
 )
 from ..stac_cache import get_bedmap_catalog_path
+
+
+# Cloud URLs for bedmap data files
+BEDMAP_DATA_URLS = {
+    'bedmap1': 'gs://opr_stac/bedmap/data/bedmap1.parquet',
+    'bedmap2': 'gs://opr_stac/bedmap/data/bedmap2.parquet',
+    'bedmap3': 'gs://opr_stac/bedmap/data/bedmap3.parquet',
+}
+
+# Default cache directory (matches OPRConnection convention)
+DEFAULT_BEDMAP_CACHE_DIR = Path.home() / '.cache' / 'xopr' / 'bedmap'
+
+
+def fetch_bedmap(
+    version: str = 'all',
+    cache_dir: Optional[Union[str, Path]] = None,
+    force: bool = False
+) -> Dict[str, Path]:
+    """
+    Download bedmap GeoParquet data files to local cache.
+
+    Downloads bedmap data files from cloud storage to local disk for faster
+    repeated queries. Useful when executing many queries in a loop.
+
+    Parameters
+    ----------
+    version : str, default 'all'
+        Which bedmap version(s) to download:
+        - 'all': Download all versions (bedmap1, bedmap2, bedmap3)
+        - 'bedmap1', 'bedmap2', 'bedmap3': Download specific version
+    cache_dir : str or Path, optional
+        Directory to store downloaded files. Defaults to ~/.cache/xopr/bedmap
+    force : bool, default False
+        If True, re-download even if files already exist
+
+    Returns
+    -------
+    dict
+        Mapping of version names to local file paths
+
+    Examples
+    --------
+    >>> # Download all bedmap data
+    >>> paths = fetch_bedmap()
+    >>> print(paths['bedmap2'])
+    /home/user/.cache/xopr/bedmap/bedmap2.parquet
+
+    >>> # Download only bedmap3
+    >>> paths = fetch_bedmap(version='bedmap3')
+
+    >>> # Use with query_bedmap for faster repeated queries
+    >>> paths = fetch_bedmap()
+    >>> for bbox in many_bboxes:
+    ...     df = query_bedmap(geometry=bbox, local_cache=True)
+    """
+    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_BEDMAP_CACHE_DIR
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Determine which versions to download
+    if version == 'all':
+        versions = list(BEDMAP_DATA_URLS.keys())
+    elif version in BEDMAP_DATA_URLS:
+        versions = [version]
+    else:
+        raise ValueError(
+            f"Unknown version '{version}'. "
+            f"Valid options: 'all', {list(BEDMAP_DATA_URLS.keys())}"
+        )
+
+    downloaded = {}
+    for ver in versions:
+        url = BEDMAP_DATA_URLS[ver]
+        local_path = cache_dir / f'{ver}.parquet'
+
+        if local_path.exists() and not force:
+            print(f"{ver}: Using cached file at {local_path}")
+            downloaded[ver] = local_path
+            continue
+
+        print(f"{ver}: Downloading from {url}...")
+        try:
+            # Use fsspec to download from GCS
+            with fsspec.open(url, 'rb') as remote_file:
+                with open(local_path, 'wb') as local_file:
+                    local_file.write(remote_file.read())
+            print(f"{ver}: Saved to {local_path}")
+            downloaded[ver] = local_path
+        except Exception as e:
+            warnings.warn(f"Failed to download {ver}: {e}")
+
+    return downloaded
+
+
+def get_bedmap_cache_path(
+    version: Optional[str] = None,
+    cache_dir: Optional[Union[str, Path]] = None
+) -> Union[Path, Dict[str, Path]]:
+    """
+    Get paths to cached bedmap data files.
+
+    Parameters
+    ----------
+    version : str, optional
+        Specific version to get path for. If None, returns all cached paths.
+    cache_dir : str or Path, optional
+        Cache directory to check. Defaults to ~/.cache/xopr/bedmap
+
+    Returns
+    -------
+    Path or dict
+        Single path if version specified, otherwise dict of all cached paths
+    """
+    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_BEDMAP_CACHE_DIR
+
+    if version:
+        return cache_dir / f'{version}.parquet'
+
+    # Return all existing cached files
+    cached = {}
+    for ver in BEDMAP_DATA_URLS.keys():
+        path = cache_dir / f'{ver}.parquet'
+        if path.exists():
+            cached[ver] = path
+    return cached
 
 
 def _crosses_antimeridian(geometry: shapely.geometry.base.BaseGeometry) -> bool:
@@ -346,6 +471,8 @@ def query_bedmap(
     columns: Optional[List[str]] = None,
     exclude_geometry: bool = True,
     catalog_path: str = 'local',
+    local_cache: bool = False,
+    cache_dir: Optional[Union[str, Path]] = None,
 ) -> gpd.GeoDataFrame:
     """
     Query bedmap data from GeoParquet catalogs and return filtered data.
@@ -374,6 +501,12 @@ def query_bedmap(
     catalog_path : str, default 'local'
         Catalog source: 'local' (cached, downloaded on first use),
         'cloud' (direct from GCS), or a custom path/URL pattern.
+    local_cache : bool, default False
+        If True, use locally cached bedmap data files for faster queries.
+        Files will be downloaded automatically if not present.
+        Recommended for repeated queries in loops.
+    cache_dir : str or Path, optional
+        Directory for local cache. Defaults to ~/.cache/xopr/bedmap
 
     Returns
     -------
@@ -389,7 +522,23 @@ def query_bedmap(
     ...     date_range=(datetime(1994, 1, 1), datetime(1995, 12, 31)),
     ...     collections=['bedmap2']
     ... )
+
+    >>> # Use local cache for faster repeated queries
+    >>> for bbox in many_bboxes:
+    ...     df = query_bedmap(geometry=bbox, local_cache=True)
     """
+    # If using local cache, bypass STAC catalog and query local files directly
+    if local_cache:
+        return _query_bedmap_cached(
+            collections=collections,
+            geometry=geometry,
+            date_range=date_range,
+            columns=columns,
+            max_rows=max_rows,
+            exclude_geometry=exclude_geometry,
+            cache_dir=cache_dir,
+        )
+
     # Query catalog for matching items using rustac
     catalog_items = query_bedmap_catalog(
         collections=collections,
@@ -475,6 +624,83 @@ def query_bedmap(
             return gdf
         else:
             # Just return with lon/lat columns (no geometry)
+            return gpd.GeoDataFrame(result_df)
+
+    return gpd.GeoDataFrame(result_df)
+
+
+def _query_bedmap_cached(
+    collections: Optional[List[str]] = None,
+    geometry: Optional[shapely.geometry.base.BaseGeometry] = None,
+    date_range: Optional[Tuple[datetime, datetime]] = None,
+    columns: Optional[List[str]] = None,
+    max_rows: Optional[int] = None,
+    exclude_geometry: bool = True,
+    cache_dir: Optional[Union[str, Path]] = None,
+) -> gpd.GeoDataFrame:
+    """
+    Query bedmap data from locally cached files.
+
+    Internal helper that fetches data if needed and queries local files.
+    """
+    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_BEDMAP_CACHE_DIR
+
+    # Determine which versions to query
+    if collections:
+        versions = [c for c in collections if c in BEDMAP_DATA_URLS]
+    else:
+        versions = list(BEDMAP_DATA_URLS.keys())
+
+    if not versions:
+        warnings.warn("No valid bedmap versions specified")
+        return gpd.GeoDataFrame()
+
+    # Check which files exist and download missing ones
+    parquet_paths = []
+    for ver in versions:
+        local_path = cache_dir / f'{ver}.parquet'
+        if not local_path.exists():
+            print(f"Downloading {ver} to local cache...")
+            fetch_bedmap(version=ver, cache_dir=cache_dir)
+
+        if local_path.exists():
+            parquet_paths.append(str(local_path))
+        else:
+            warnings.warn(f"Could not fetch {ver}")
+
+    if not parquet_paths:
+        warnings.warn("No bedmap files available")
+        return gpd.GeoDataFrame()
+
+    # Build and execute DuckDB query on local files
+    query = build_duckdb_query(
+        parquet_urls=parquet_paths,
+        geometry=geometry,
+        date_range=date_range,
+        columns=columns,
+        max_rows=max_rows
+    )
+
+    conn = duckdb.connect()
+    try:
+        conn.execute("INSTALL spatial; LOAD spatial;")
+        result_df = conn.execute(query).df()
+    except Exception as e:
+        warnings.warn(f"Error executing DuckDB query: {e}")
+        return gpd.GeoDataFrame()
+    finally:
+        conn.close()
+
+    if result_df.empty:
+        return gpd.GeoDataFrame()
+
+    print(f"Retrieved {len(result_df):,} rows from local cache")
+
+    if 'lon' in result_df.columns and 'lat' in result_df.columns:
+        if not exclude_geometry:
+            geom = gpd.points_from_xy(result_df['lon'], result_df['lat'])
+            return gpd.GeoDataFrame(result_df, geometry=geom, crs='EPSG:4326')
+        else:
             return gpd.GeoDataFrame(result_df)
 
     return gpd.GeoDataFrame(result_df)
