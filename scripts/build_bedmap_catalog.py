@@ -112,10 +112,6 @@ Examples:
         sys.exit(1)
 
     print("\nCatalog build complete!")
-    print("\nNext steps:")
-    print(f"  1. Review catalog: ls -la {catalog_dir}")
-    print(f"  2. Upload to cloud: bash scripts/upload_bedmap_to_gcloud.sh")
-
 
 if __name__ == '__main__':
     main()
