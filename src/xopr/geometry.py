@@ -1,3 +1,29 @@
+"""
+Geospatial operations for radar datasets
+
+This module provides utilities for working with geospatial data in the context
+of polar radar analysis. It includes functions for:
+
+- Loading and filtering Antarctic regional boundaries from the MEaSUREs dataset
+- Projecting radar dataset coordinates between different coordinate reference systems
+- Reprojecting GeoJSON geometries for spatial analysis
+
+The module handles common polar coordinate system transformations, particularly
+between WGS84 (EPSG:4326) and Antarctic Polar Stereographic (EPSG:3031), and
+provides tools for merging and simplifying regional boundaries.
+
+Functions
+---------
+get_antarctic_regions : Load and filter Antarctic regional boundaries
+project_dataset : Project dataset coordinates to a target CRS
+project_geojson : Reproject geometries between coordinate systems
+
+See Also
+--------
+MEaSUREs Antarctic Boundaries: https://nsidc.org/data/nsidc-0709/versions/2
+EPSG:3031 (Antarctic Polar Stereographic): https://epsg.io/3031
+"""
+
 import geopandas as gpd
 import shapely
 import shapely.ops
@@ -17,6 +43,10 @@ def get_antarctic_regions(
     """
     Load and filter Antarctic regional boundaries from the MEASURES dataset.
 
+    See these two notebooks for examples of how to use this function:
+    - https://docs.englacial.org/xopr/search-and-scaling/
+    - https://docs.englacial.org/xopr/crossovers/
+    
     Parameters
     ----------
     name : str or list, optional

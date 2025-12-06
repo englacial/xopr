@@ -1,3 +1,54 @@
+"""
+Core data access interface for Open Polar Radar (OPR) datasets.
+
+This module provides the primary interface for discovering, querying, and loading
+polar ice-penetrating radar data from the Open Polar Radar archive. It implements
+a STAC (SpatioTemporal Asset Catalog) based workflow for efficient data discovery
+and retrieval.
+
+Primary Class
+-------------
+OPRConnection : Main interface for accessing OPR data
+    Provides methods for querying STAC catalogs, loading radar frames,
+    and retrieving layer picks from both file-based and database sources.
+
+Typical Workflow
+----------------
+1. Create an OPRConnection object, optionally with local caching
+2. Query the STAC catalog to find radar data matching your criteria
+3. Load radar frames as xarray Datasets
+4. Optionally load associated layer picks
+5. Process and visualize the data
+
+See this notebook for an end-to-end example:
+- https://docs.englacial.org/xopr/demo-notebook/
+
+Examples
+--------
+>>> import xopr
+>>> # Connect to OPR with local caching
+>>> opr = xopr.OPRConnection(cache_dir='radar_cache')
+>>>
+>>> # Query for data in a specific collection and segment
+>>> stac_items = opr.query_frames(
+...     collections=['2022_Antarctica_BaslerMKB'],
+...     segment_paths=['20230109_01']
+... )
+>>>
+>>> # Load the radar frames
+>>> frames = opr.load_frames(stac_items)
+>>>
+>>> # Get layer picks (surface/bed)
+>>> layers = opr.get_layers(frames[0])
+
+See Also
+--------
+xopr.geometry : Geographic utilities for region selection and projection
+xopr.radar_util : Processing functions for radar data and layers
+ops_api : Interface to the OPS database API
+"""
+
+from typing import Iterable, Optional, Union
 import re
 import warnings
 from typing import Union
@@ -28,14 +79,16 @@ class OPRConnection:
                  cache_dir: str = None,
                  stac_parquet_href: str = "gs://opr_stac/catalog/**/*.parquet"):
         """
-        Initialize the OPRConnection with a collection URL and optional cache directory.
+        Initialize connection to OPR data archive.
 
         Parameters
         ----------
-        collection_url : str
-            The base URL for the OPR data collection.
+        collection_url : str, optional
+            Base URL for OPR data collection.
         cache_dir : str, optional
-            Directory to cache downloaded data.
+            Directory to cache downloaded data for faster repeated access.
+        stac_parquet_href : str, optional
+            Path or URL pattern to STAC catalog parquet files.
         """
         self.collection_url = collection_url
         self.cache_dir = cache_dir
@@ -73,36 +126,35 @@ class OPRConnection:
                      max_items: int = None, exclude_geometry: bool = False,
                      search_kwargs: dict = {}) -> gpd.GeoDataFrame:
         """
-        Query for radar frames based on various search criteria. Each parameter is
-        treated as an independent criteria. If multiple parameters are passed, they are
-        combined with AND logic.
+        Query STAC catalog for radar frames matching search criteria.
 
-        A list of values may be passed to most parameters. If so, any values in the list
-        will be treated as a match.
+        Multiple parameters are combined with AND logic. Lists of values are
+        treated with OR logic (any value matches).
 
         Parameters
         ----------
-        collections : list[str], optional
-            List of collection names to filter by (e.g., "2022_Antarctica_BaslerMKB").
-        segment_paths : list[str], optional
-            List of segment paths to filter by (e.g., "20230126_01").
-        geometry : optional
-            Geospatial geometry to filter by (e.g., a shapely geometry object).
-        date_range : tuple, optional
-            Date range to filter by (e.g., (start_date, end_date)).
+        collections : list[str] or str, optional
+            Collection name(s) (e.g., "2022_Antarctica_BaslerMKB").
+        segment_paths : list[str] or str, optional
+            Segment path(s) in format "YYYYMMDD_NN" (e.g., "20230126_01").
+        geometry : shapely geometry or dict, optional
+            Geospatial geometry to filter by intersection.
+        date_range : str, optional
+            Date range in ISO format (e.g., "2021-01-01/2025-06-01").
         properties : dict, optional
-            Additional properties to include in the query.
+            Additional STAC properties to filter by.
         max_items : int, optional
             Maximum number of items to return.
         exclude_geometry : bool, optional
-            If True, exclude the geometry field from the response to reduce size.
+            If True, exclude geometry field to reduce response size.
         search_kwargs : dict, optional
-            Additional keyword arguments to pass to the search method.
+            Additional keyword arguments for STAC search.
 
         Returns
         -------
-        gpd.GeoDataFrame
-            GeoDataFrame containing the STAC frames matching the query criteria.
+        gpd.GeoDataFrame or None
+            GeoDataFrame of matching STAC items with columns for collection,
+            geometry, properties, and assets. Returns None if no matches found.
         """
 
         search_params = {}
@@ -234,23 +286,24 @@ class OPRConnection:
                     skip_errors: bool = False,
                     ) -> Union[list[xr.Dataset], xr.Dataset]:
         """
-        Load multiple radar frames from a list of STAC items.
+        Load multiple radar frames from STAC items.
 
         Parameters
         ----------
         stac_items : gpd.GeoDataFrame
-            The STAC items containing asset URLs.
+            STAC items returned from query_frames.
         data_product : str, optional
-            The data product to load (default is "CSARP_standard").
+            Data product to load (e.g., "CSARP_standard", "CSARP_qlook").
         merge_flights : bool, optional
-            Whether to merge frames from the same flight (default is False).
+            If True, merge frames from the same segment into single Datasets.
         skip_errors : bool, optional
-            Whether to skip errors and continue loading other frames (default is False).
+            If True, skip failed frames and continue loading others.
 
         Returns
         -------
         list[xr.Dataset] or xr.Dataset
-            List of loaded radar frames as xarray Datasets or a single merged Dataset if there is only one segment and merge_flights is True.
+            List of radar frame Datasets, or list of merged Datasets if
+            merge_flights=True.
         """
         frames = []
 
@@ -272,19 +325,20 @@ class OPRConnection:
 
     def load_frame(self, stac_item, data_product: str = "CSARP_standard") -> xr.Dataset:
         """
-        Load a radar frame from a STAC item.
+        Load a single radar frame from STAC item.
 
         Parameters
         ----------
-        stac_item
-            The STAC item containing asset URLs.
+        stac_item : dict or pd.Series
+            STAC item containing asset URLs.
         data_product : str, optional
-            The data product to load (default is "CSARP_standard").
+            Data product to load (e.g., "CSARP_standard", "CSARP_qlook").
 
         Returns
         -------
         xr.Dataset
-            The loaded radar frame as an xarray Dataset.
+            Radar frame with coordinates slow_time and twtt, and data variables
+            including Data, Latitude, Longitude, Elevation, Surface, etc.
         """
 
         assets = stac_item['assets']
@@ -305,17 +359,19 @@ class OPRConnection:
 
     def load_frame_url(self, url: str) -> xr.Dataset:
         """
-        Load a radar frame from a given URL.
+        Load radar frame directly from URL.
+
+        Automatically detects and handles both HDF5 and legacy MATLAB formats.
 
         Parameters
         ----------
         url : str
-            The URL of the radar frame data.
+            URL to radar frame data file (.mat).
 
         Returns
         -------
         xr.Dataset
-            The loaded radar frame as an xarray Dataset.
+            Radar frame with CF-compliant metadata and citation information.
         """
 
         file = self._open_file(url)
@@ -475,12 +531,12 @@ class OPRConnection:
 
     def get_collections(self) -> list:
         """
-        Get list of available STAC collections.
+        Get all available collections (seasons/campaigns) in STAC catalog.
 
         Returns
         -------
-        list
-            List of collection dictionaries with metadata.
+        list[dict]
+            List of collection dictionaries with id, description, and extent.
         """
 
         client = DuckdbClient()
@@ -488,17 +544,18 @@ class OPRConnection:
 
     def get_segments(self, collection_id: str) -> list:
         """
-        Get list of available segments within a collection/season.
+        Get all segments (flights) within a collection.
 
         Parameters
         ----------
         collection_id : str
-            The ID of the STAC collection to query.
+            STAC collection ID (e.g., "2022_Antarctica_BaslerMKB").
 
         Returns
         -------
-        list
-            List of flight dictionaries with flight metadata.
+        list[dict]
+            List of segment dictionaries with segment_path, date, flight_number,
+            and frame count.
         """
         # Query STAC API for all items in collection (exclude geometry for better performance)
         items = self.query_frames(collections=[collection_id], exclude_geometry=True)
@@ -544,15 +601,16 @@ class OPRConnection:
 
         Parameters
         ----------
-        segment : Union[xr.Dataset, dict]
-            The flight information, which can be an xarray Dataset or a dictionary representing the STAC item.
+        segment : xr.Dataset or dict
+            Radar frame Dataset or STAC item.
         raise_errors : bool, optional
             If True, raise errors when layers cannot be found.
 
         Returns
         -------
         dict
-            A dictionary mapping layer IDs to their corresponding data.
+            Dictionary mapping layer names (e.g., "standard:surface",
+            "standard:bottom") to layer Datasets.
         """
         collection, segment_path, frame = self._extract_segment_info(segment)
 
@@ -656,16 +714,18 @@ class OPRConnection:
 
     def load_layers_file(self, url: str) -> xr.Dataset:
         """
-        Load layer data from a CSARP_layer file (either HDF5 or MATLAB format).
+        Load layer data from CSARP_layer file.
 
         Parameters
         ----------
         url : str
-            URL or path to the layer file
+            URL or path to layer file.
 
         Returns
         -------
         xr.Dataset
+            Layer data with coordinates slow_time and layer, and data variables
+            twtt, quality, type, lat, lon, and elev.
             Layer data in a standardized format with coordinates:
             - slow_time: GPS time converted to datetime
             And data variables:
@@ -783,19 +843,21 @@ class OPRConnection:
 
     def _get_layers_db(self, flight: Union[xr.Dataset, dict], include_geometry=True, raise_errors=True) -> dict:
         """
-        Fetch layer data from the OPS API
+        Load layer picks from OPS database API.
 
         Parameters
         ----------
-        flight : Union[xr.Dataset, dict]
-            The flight data, which can be an xarray Dataset or a dictionary.
+        flight : xr.Dataset or dict
+            Radar frame Dataset or STAC item.
         include_geometry : bool, optional
-            If True, include geometry information in the returned layers.
+            If True, include geometry information in layers.
+        raise_errors : bool, optional
+            If True, raise errors when layers cannot be found.
 
         Returns
         -------
         dict
-            A dictionary mapping layer IDs to their corresponding data.
+            Dictionary mapping layer names to layer Datasets.
         """
 
         collection, segment_path, _ = self._extract_segment_info(flight)
@@ -863,14 +925,16 @@ class OPRConnection:
 
     def get_layers(self, ds : xr.Dataset, source: str = 'auto', include_geometry=True, errors='warn') -> dict:
         """
-        Fetch layer data for a given flight dataset, either from CSARP_layer files or the OPS Database API.
+        Load layer picks from files or database.
+
+        Tries files first, falls back to database if source='auto'.
 
         Parameters
         ----------
         ds : xr.Dataset
-            The flight dataset containing attributes for collection and segment.
-        source : str, optional
-            The source to fetch layers from: 'auto', 'files', or 'db' (default is 'auto').
+            Radar frame Dataset.
+        source : {'auto', 'files', 'db'}, optional
+            Source for layers. 'auto' tries files then falls back to database.
         include_geometry : bool, optional
             If True, include geometry information when fetching from the API.
         errors : str, optional
