@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
     "numpy",
     "scipy",
-    "xarray",
+    "xarray>=2024.10.0",
     "h5netcdf",
     "requests",
     "matplotlib",
@@ -24,7 +24,11 @@ dependencies = [
     "dask[distributed]",
     "rustac>=0.6.0",
     "antimeridian>=0.4.3",
-    "hdf5storage"
+    "hdf5storage",
+    "duckdb>=1.0.0",
+    "haversine>=2.8.0",
+    "pyarrow",
+    "platformdirs",
 ]
 
 [project.optional-dependencies]

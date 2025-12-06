@@ -20,6 +20,7 @@ project:
     - file: index.md
     - file: design.md
     - file: map.md
+    - file: bedmap.md
     - title: API Docs
       url: /xopr/api/xopr.html
     - title: Notebooks
