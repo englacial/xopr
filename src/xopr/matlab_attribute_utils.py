@@ -1,3 +1,36 @@
+"""
+Utilities and fixes for loading MATLAB format files into Xarray.
+
+This module provides various utilities for correctly reading MATLAB files and
+converting them to formats compatible with xarray datasets. It handles both
+modern HDF5-format MATLAB files (.mat v7.3+) and legacy MATLAB file formats.
+
+The module addresses several common issues when loading MATLAB data:
+
+- Dereferencing HDF5 object references in MATLAB files
+- Decoding MATLAB char arrays (both uint16 Unicode and uint8 ASCII)
+- Converting MATLAB cell arrays to Python lists
+- Handling empty MATLAB arrays
+- Stripping sensitive data (API keys) from attributes
+- Converting object ndarrays to JSON-serializable lists
+
+HDF5-Format MATLAB Files (v7.3+)
+--------------------------------
+- dereference_h5value: Recursively dereference HDF5 object references
+- decode_hdf5_matlab_variable: Decode MATLAB variables from HDF5 storage
+
+Legacy MATLAB Files (v4-v7.2)
+------------------------------
+- extract_legacy_mat_attributes: Extract attributes from legacy .mat files
+- strip_api_key: Remove API keys from attribute dictionaries
+- convert_object_ndarrays_to_lists: Convert object arrays to lists
+
+Notes
+-----
+@private This module is not intended for external use.
+
+"""
+
 from collections.abc import Iterable
 
 import h5py
