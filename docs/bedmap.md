@@ -2,8 +2,7 @@
 
 Below is an Antarctic map showing Bedmap radar flight line coverage. This map loads GeoParquet STAC catalog files directly in the browser using WebAssembly.
 
-All the data shown be queried using `query_bedmap_catalog` and retrieved as a pandas
-dataframe using `query_bedmap`.
+All the data shown can be queried using [`query_bedmap_catalog`](/xopr/api/xopr/bedmap/query.html#query_bedmap_catalog) and retrieved as a pandas dataframe using [`query_bedmap`](/xopr/api/xopr/bedmap/query.html#query_bedmap). For faster repeated queries, use [`fetch_bedmap`](/xopr/api/xopr/bedmap/query.html#fetch_bedmap) to download data locally first.
 
 **About Bedmap**
 

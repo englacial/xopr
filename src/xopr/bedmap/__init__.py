@@ -34,6 +34,8 @@ from .query import (
     query_bedmap,
     query_bedmap_catalog,
     query_bedmap_local,
+    fetch_bedmap,
+    get_bedmap_cache_path,
 )
 
 __all__ = [
@@ -57,6 +59,8 @@ __all__ = [
     'query_bedmap',
     'query_bedmap_catalog',
     'query_bedmap_local',
+    'fetch_bedmap',
+    'get_bedmap_cache_path',
 ]
 
 __version__ = '0.1.0'
