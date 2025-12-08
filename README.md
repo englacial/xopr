@@ -12,7 +12,7 @@
 ![Total Data Ingest](https://progress-bar.xyz/29/?scale=100&title=Total%20Data%20Ingest&width=200&color=babaca&suffix=%25)
 <!--/TOTAL_BADGE-->
 
-*Data last updated: <!--LAST_UPDATED-->2025-12-03<!--/LAST_UPDATED-->*
+*Data last updated: <!--LAST_UPDATED-->2025-12-08<!--/LAST_UPDATED-->*
 
 **Try our code in binder:** [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/englacial/xopr/HEAD?urlpath=lab/tree/docs/notebooks)
 
