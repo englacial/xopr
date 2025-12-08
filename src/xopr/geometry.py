@@ -92,7 +92,7 @@ def get_antarctic_regions(
                 print("Consider using merge_in_projection='EPSG:3031' to reproject before merging.")
             print(f"Invalid geometry regions were: {', '.join(invalid_geometries['NAME'])}")
 
-        merged = filtered.union_all()
+        merged = shapely.ops.unary_union(filtered.geometry)  # geopandas < 1.0 compat
 
         if simplify_tolerance is None and (merge_in_projection == "EPSG:3031"): # Set a reasonable default based on the size
             area_km2 = merged.area / 1e6
