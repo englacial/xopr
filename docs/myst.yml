@@ -2,7 +2,7 @@
 version: 1
 project:
   id: 596fff92-1ac1-46c3-9135-ae47161aadd8
-  title: xopr Documentation
+  title: xOPR Documentation
   # description:
   # keywords: []
   # authors: []
@@ -34,8 +34,8 @@ project:
 site:
   template: book-theme
   options:
-    analytics_plausible: docs.englacial.org/xopr  # Your domain
-    logo_text: xopr Documentation
+    analytics_plausible: docs.englacial.org/xopr
+    logo_text: xOPR Documentation
     static_dir: _static
   #   favicon: favicon.ico
   #   logo: site_logo.png
