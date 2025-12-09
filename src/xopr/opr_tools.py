@@ -24,7 +24,7 @@ def merge_frames(frames: Iterable[xr.Dataset]) -> Union[list[xr.Dataset], xr.Dat
     segments = {}
 
     mergable_keys = ['source_url', 'collection', 'data_product', 'granule']
-    
+
     for frame in frames:
         # Get segment path from frame attributes
         granule = frame.attrs.get('granule')
@@ -132,10 +132,10 @@ def find_intersections(gdf : gpd.GeoDataFrame, remove_self_intersections: bool =
     tmp_df = gdf.reset_index()
     tmp_df['geom'] = tmp_df.geometry
     intersections = gpd.sjoin(tmp_df, tmp_df, how='inner', predicate='intersects', lsuffix='1', rsuffix='2')
-    
+
     if remove_self_intersections:
         intersections = intersections[intersections['id_1'] != intersections['id_2']]
-    
+
     intersections['intersection_geometry'] = intersections.apply(lambda row: row['geom_1'].intersection(row['geom_2']), axis=1)
     intersections.set_geometry('intersection_geometry', inplace=True, crs=gdf.crs)
     intersections = intersections.drop_duplicates(subset=['intersection_geometry'])
@@ -162,7 +162,7 @@ def find_intersections(gdf : gpd.GeoDataFrame, remove_self_intersections: bool =
             lambda row: _calculate_crossing_angle(row['geom_1'], row['geom_2'], row['intersection_geometry']),
             axis=1
         )
-    
+
     return intersections
 
 def _calculate_crossing_angle(line1, line2, intersection_point):
@@ -183,7 +183,6 @@ def _calculate_crossing_angle(line1, line2, intersection_point):
     float
         The crossing angle in degrees.
     """
-    from shapely.geometry import Point
     import numpy as np
 
     def get_line_angle(line, point):
@@ -193,7 +192,7 @@ def _calculate_crossing_angle(line1, line2, intersection_point):
         buffer_distance = 1e-6  # Small distance to create a segment
         start_point = line.interpolate(max(0, line.project(nearest_point) - buffer_distance))
         end_point = line.interpolate(min(line.length, line.project(nearest_point) + buffer_distance))
-        
+
         # Calculate the angle of the segment
         delta_x = end_point.x - start_point.x
         delta_y = end_point.y - start_point.y
@@ -210,7 +209,7 @@ def _calculate_crossing_angle(line1, line2, intersection_point):
     # Ensure the angle is between 0 and 180 degrees
     if crossing_angle > 180:
         crossing_angle = 360 - crossing_angle
-    
+
     if crossing_angle > 90:
         crossing_angle = 180 - crossing_angle
 

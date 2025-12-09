@@ -7,7 +7,7 @@ reducing network latency for repeated queries.
 
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import requests
 from platformdirs import user_cache_dir

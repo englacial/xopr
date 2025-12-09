@@ -34,7 +34,7 @@ def get_layer_points(segment_name : str, season_name : str, location=None, layer
     -------
     dict or None
         API response as JSON containing layer points data, or None if request fails.
-        
+
     Raises
     ------
     ValueError
@@ -59,7 +59,7 @@ def get_layer_points(segment_name : str, season_name : str, location=None, layer
 
     if include_geometry:
         data_payload["properties"]["return_geom"] = 'geog'
-    
+
     # Add layer names if specified
     if layer_names:
         data_payload["properties"]["lyr_name"] = layer_names
@@ -93,7 +93,7 @@ def get_segment_metadata(segment_name : str, season_name : str):
     -------
     dict or None
         API response as JSON containing segment metadata, or None if request fails.
-        
+
     Raises
     ------
     ValueError
@@ -132,7 +132,7 @@ def _ops_api_request(path, data, request_type='POST', headers=None, base_url=ops
     dict or None
         API response as JSON, or None if request fails after retries.
     """
-    
+
     url = f"{base_url}/{path.lstrip('/')}"
 
 
@@ -148,7 +148,7 @@ def _ops_api_request(path, data, request_type='POST', headers=None, base_url=ops
             'Authorization': f'Basic {credentials}',
             'Cookie': 'userName=anonymous; isAuthenticated=0'
         }
-    
+
     try:
         # Make the request
         if request_type == 'POST':
@@ -162,7 +162,7 @@ def _ops_api_request(path, data, request_type='POST', headers=None, base_url=ops
 
         # Check if request was successful
         response.raise_for_status()
-        
+
         response_json = response.json()
 
         if debug:
@@ -176,7 +176,7 @@ def _ops_api_request(path, data, request_type='POST', headers=None, base_url=ops
             while time.time() - task_start_time < job_timeout:
                 # Check the status of the background task
                 status_response = _ops_api_request(f"/get/status/{urllib.parse.quote(task_id)}", {}, request_type='GET', headers=headers, base_url=base_url, retries=retries)
-                
+
                 if debug:
                     print(f"Checking status for task {task_id}: {status_response}")
 
@@ -187,7 +187,7 @@ def _ops_api_request(path, data, request_type='POST', headers=None, base_url=ops
                 initial_retry_time *= 2  # Exponential backoff
 
             raise TimeoutError(f"Task {task_id} timed out after {job_timeout} seconds.")
-        
+
         return response_json
 
     except requests.exceptions.HTTPError as e:

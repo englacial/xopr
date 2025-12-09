@@ -4,22 +4,19 @@ STAC catalog creation utilities for Open Polar Radar data.
 
 import re
 import json
-import logging
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Union
 
-import numpy as np
 import pyarrow.parquet as pq
 import pystac
 import stac_geoparquet
 from shapely.geometry import mapping
 
-from .metadata import extract_item_metadata, discover_campaigns, discover_flight_lines, collect_uniform_metadata
+from .metadata import extract_item_metadata
 from .geometry import (
-    simplify_geometry_polar_projection,
-    build_collection_extent_and_geometry
+    simplify_geometry_polar_projection
 )
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 # STAC extension URLs
 SCI_EXT = 'https://stac-extensions.github.io/scientific/v1.0.0/schema.json'
@@ -35,7 +32,7 @@ def create_collection(
 ) -> pystac.Collection:
     """
     Create a STAC collection for a campaign or data product grouping.
-    
+
     Parameters
     ----------
     collection_id : str
@@ -49,12 +46,12 @@ def create_collection(
     stac_extensions : list of str, optional
         List of STAC extension URLs to enable. If None, defaults to
         empty list.
-        
+
     Returns
     -------
     pystac.Collection
         Collection object.
-        
+
     Examples
     --------
     >>> from datetime import datetime
@@ -92,7 +89,7 @@ def create_item(
 ) -> pystac.Item:
     """
     Create a STAC item for a flight line data segment.
-    
+
     Parameters
     ----------
     item_id : str
@@ -106,17 +103,17 @@ def create_item(
     properties : dict, optional
         Additional metadata properties. If None, defaults to empty dict.
     assets : dict of str to pystac.Asset, optional
-        Dictionary of assets (data files, thumbnails, etc.). Keys are 
+        Dictionary of assets (data files, thumbnails, etc.). Keys are
         asset names, values are pystac.Asset objects.
     stac_extensions : list of str, optional
         List of STAC extension URLs to enable. If None, defaults to
         file extension.
-        
+
     Returns
     -------
     pystac.Item
         Item object with specified properties and assets.
-        
+
     Examples
     --------
     >>> from datetime import datetime
@@ -133,7 +130,7 @@ def create_item(
         properties = {}
     if stac_extensions is None:
         stac_extensions = ['https://stac-extensions.github.io/file/v2.1.0/schema.json']
-    
+
     item = pystac.Item(
         id=item_id,
         geometry=geometry,
@@ -142,11 +139,11 @@ def create_item(
         properties=properties,
         stac_extensions=stac_extensions
     )
-    
+
     if assets:
         for key, asset in assets.items():
             item.add_asset(key, asset)
-    
+
     return item
 
 
@@ -161,7 +158,7 @@ def create_items_from_flight_data(
 ) -> List[pystac.Item]:
     """
     Create STAC items from flight line data.
-    
+
     Parameters
     ----------
     flight_data : dict
@@ -180,7 +177,7 @@ def create_items_from_flight_data(
     error_log_file : str or Path, optional
         Path to file where metadata extraction errors will be logged.
         If None, errors are printed to stdout (default behavior).
-        
+
     Returns
     -------
     list of pystac.Item
@@ -191,16 +188,16 @@ def create_items_from_flight_data(
     flight_id = flight_data['flight_id']
 
     primary_data_files = flight_data['data_files'][primary_data_product].values()
-    
+
     for data_file_path in primary_data_files:
         data_path = Path(data_file_path)
-        
+
         try:
             # Extract metadata from MAT file only (no CSV needed)
             metadata = extract_item_metadata(data_path)
         except Exception as e:
             error_msg = f"Failed to extract metadata for {data_path}: {e}"
-            
+
             if error_log_file is not None:
                 # Log to file
                 with open(error_log_file, 'a', encoding='utf-8') as f:
@@ -208,14 +205,14 @@ def create_items_from_flight_data(
             else:
                 # Fallback to print (current behavior)
                 print(f"Warning: {error_msg}")
-            
+
             continue
 
         item_id = f"{data_path.stem}"
-        
+
         # Simplify geometry using config tolerance
         simplified_geom = simplify_geometry_polar_projection(
-            metadata['geom'], 
+            metadata['geom'],
             simplify_tolerance=config.geometry.tolerance
         )
         geometry = mapping(simplified_geom)
@@ -224,7 +221,7 @@ def create_items_from_flight_data(
 
         rel_mat_path = f"{campaign_name}/{primary_data_product}/{flight_id}/{data_path.name}"
         data_href = base_url + rel_mat_path
-        
+
         # Extract frame number from MAT filename (e.g., "Data_20161014_03_001.mat" -> "001")
         frame_match = re.search(r'_(\d+)\.mat$', data_path.name)
         frame = frame_match.group(1)
@@ -241,7 +238,7 @@ def create_items_from_flight_data(
             'opr:segment': int(segment_num_str),  # Changed from opr:flight
             'opr:frame': int(frame)  # Changed from opr:segment
         }
-        
+
         # Add scientific extension properties if available
         item_stac_extensions = ['https://stac-extensions.github.io/file/v2.1.0/schema.json']
 
@@ -259,7 +256,7 @@ def create_items_from_flight_data(
 
         if any(metadata.get(k) is not None for k in ['doi', 'citation']):
             item_stac_extensions.append('https://stac-extensions.github.io/scientific/v1.0.0/schema.json')
-        
+
         assets = {}
 
         for data_product_type in flight_data['data_files'].keys():
@@ -274,7 +271,7 @@ def create_items_from_flight_data(
                 )
                 if data_product_type == primary_data_product:
                     assets['data'] = assets[data_product_type]
-        
+
         thumb_href = base_url + f"{campaign_name}/images/{flight_id}/{flight_id}_{frame}_2echo_picks.jpg"
         assets['thumbnails'] = pystac.Asset(
             href=thumb_href,
@@ -286,7 +283,7 @@ def create_items_from_flight_data(
             href=flight_path_href,
             media_type=pystac.MediaType.JPEG
         )
-        
+
         item = create_item(
             item_id=item_id,
             geometry=geometry,
@@ -296,9 +293,9 @@ def create_items_from_flight_data(
             assets=assets,
             stac_extensions=item_stac_extensions
         )
-        
+
         items.append(item)
-    
+
     return items
 
 def determine_hemisphere_from_geometry(items: List[pystac.Item]) -> Optional[str]:
@@ -405,7 +402,7 @@ def export_collection_to_parquet(
     # Extract settings from config
     output_dir = Path(config.output.path)
     verbose = config.logging.get('verbose', False)
-    
+
     # Get items from collection and subcollections
     collection_items = list(collection.get_items())
     if not collection_items:
@@ -491,10 +488,10 @@ def export_collection_to_parquet(
                 if link.get('href') is not None
             ]
         clean_items.append(item_dict)
-    
+
     # Convert items to Arrow format
     record_batch_reader = stac_geoparquet.arrow.parse_stac_items_to_arrow(clean_items)
-    
+
     # Write to Parquet with collection metadata
     # Note: Using collection_metadata for compatibility with stac-geoparquet 0.7.0
     # In newer versions (>0.8), this should be 'collections' parameter
@@ -506,11 +503,11 @@ def export_collection_to_parquet(
         compression="snappy",  # Use snappy compression for better performance
         write_statistics=True  # Write column statistics for query optimization
     )
-    
+
     if verbose:
         size_kb = parquet_file.stat().st_size / 1024
         print(f"  ✅ {collection.id}.parquet saved ({size_kb:.1f} KB)")
-    
+
     return parquet_file
 
 

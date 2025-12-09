@@ -22,7 +22,6 @@ import duckdb
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 import pyarrow.csv as pa_csv
 import pyarrow.parquet as pq
 from tqdm import tqdm

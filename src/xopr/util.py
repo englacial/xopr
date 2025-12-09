@@ -1,4 +1,3 @@
-import xarray as xr
 import numpy as np
 import pandas as pd
 import itertools
@@ -59,7 +58,7 @@ def equivalent(first, second) -> bool:
     """Compare two objects for equivalence (identity or equality).
 
     Handles different data types:
-    
+
     * Arrays: Uses numpy.array_equal for comparison
     * Lists/sequences: Recursively compares all elements
     * Dictionaries: Compares keys and values recursively
@@ -148,35 +147,35 @@ def merge_dicts_no_conflicts(dicts: List[Dict[str, Any]], context=None) -> Dict[
 def get_ror_display_name(ror_id: str) -> Optional[str]:
     """
     Parse ROR API response to find the for_display name of a given ROR ID.
-    
+
     Args:
         ror_id (str): The ROR identifier (e.g., "https://ror.org/02jx3x895" or just "02jx3x895")
-    
+
     Returns:
         Optional[str]: The for_display name if found, None otherwise
     """
     # Clean the ROR ID - extract just the identifier part if full URL is provided
     if ror_id.startswith('https://ror.org/'):
         ror_id = ror_id.replace('https://ror.org/', '')
-    
+
     try:
         # Make request to ROR API
         url = f"https://api.ror.org/organizations/{ror_id}"
         response = requests.get(url)
         response.raise_for_status()
-        
+
         # Parse JSON response
         data = response.json()
-        
+
         # Extract for_display name
         names = data.get('names', [])
         for name_entry in names:
             if name_entry.get('types') and 'ror_display' in name_entry['types']:
                 return name_entry.get('value')
-        
+
         # Fallback to primary name if no for_display found
         return data.get('name')
-        
+
     except requests.exceptions.RequestException as e:
         print(f"Error fetching data from ROR API: {e}")
         return None
