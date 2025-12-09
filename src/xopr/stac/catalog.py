@@ -2,21 +2,19 @@
 STAC catalog creation utilities for Open Polar Radar data.
 """
 
-import re
 import json
+import re
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Union
+from typing import Any, Dict, List, Optional, Union
 
 import pyarrow.parquet as pq
 import pystac
 import stac_geoparquet
+from omegaconf import DictConfig
 from shapely.geometry import mapping
 
+from .geometry import simplify_geometry_polar_projection
 from .metadata import extract_item_metadata
-from .geometry import (
-    simplify_geometry_polar_projection
-)
-from omegaconf import DictConfig
 
 # STAC extension URLs
 SCI_EXT = 'https://stac-extensions.github.io/scientific/v1.0.0/schema.json'

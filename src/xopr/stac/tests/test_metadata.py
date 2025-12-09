@@ -1,12 +1,14 @@
 """Tests for metadata extraction functionality."""
 
+from unittest.mock import MagicMock, Mock, patch
+
 import numpy as np
 import pytest
-from unittest.mock import Mock, MagicMock, patch
 from shapely.geometry import LineString
 
-from xopr.stac.metadata import extract_stable_wfs_params, extract_item_metadata
-from .common import create_mock_dataset, TEST_DOI, TEST_ROR, TEST_FUNDER
+from xopr.stac.metadata import extract_item_metadata, extract_stable_wfs_params
+
+from .common import TEST_DOI, TEST_FUNDER, TEST_ROR, create_mock_dataset
 
 
 class TestExtractItemMetadata:
@@ -175,8 +177,9 @@ class TestExtractItemMetadataWithRealData:
         assert set(result.keys()) == expected_keys
 
         # Check data types for always-present values
-        from shapely.geometry import LineString
         from datetime import datetime
+
+        from shapely.geometry import LineString
 
         assert isinstance(result['geom'], LineString)
         assert isinstance(result['date'], datetime)
@@ -339,6 +342,7 @@ class TestCollectUniformMetadata:
     def test_no_scientific_metadata(self):
         """Test that no extensions are added when no scientific metadata exists."""
         from xopr.stac.metadata import collect_uniform_metadata
+
         from .common import create_mock_stac_item
 
         # Create items without scientific metadata
@@ -371,6 +375,7 @@ class TestCollectUniformMetadata:
     def test_with_unique_doi(self):
         """Test that scientific extension is added when unique DOI exists."""
         from xopr.stac.metadata import collect_uniform_metadata
+
         from .common import create_mock_stac_item
 
         test_doi = "10.1234/test.doi"
@@ -398,6 +403,7 @@ class TestCollectUniformMetadata:
     def test_with_multiple_dois_no_aggregation(self):
         """Test that scientific extension is not added when multiple different DOIs exist."""
         from xopr.stac.metadata import collect_uniform_metadata
+
         from .common import create_mock_stac_item
 
         # Create items with different DOIs
@@ -422,6 +428,7 @@ class TestCollectUniformMetadata:
     def test_none_values_filtered_correctly(self):
         """Test that None values are properly filtered in uniform metadata collection."""
         from xopr.stac.metadata import collect_uniform_metadata
+
         from .common import create_mock_stac_item
 
         # Create test items with None and non-None values

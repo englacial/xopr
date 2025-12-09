@@ -6,12 +6,12 @@ for use with xopr's map visualization and query infrastructure.
 """
 
 import json
+import warnings
 from pathlib import Path
 from typing import Dict, Union
-import warnings
 
-import pyarrow.parquet as pq
 import geopandas as gpd
+import pyarrow.parquet as pq
 from shapely import wkb, wkt
 
 

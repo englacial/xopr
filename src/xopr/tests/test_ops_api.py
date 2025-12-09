@@ -4,6 +4,7 @@ as expected and also verifies that the OPS API has not changed in any breaking w
 """
 
 import pytest
+
 import xopr.opr_access as xopr
 import xopr.ops_api
 

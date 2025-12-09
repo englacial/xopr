@@ -7,35 +7,32 @@ This module provides functionality to:
 - Query and retrieve bedmap data efficiently
 """
 
+from .catalog import (
+    build_bedmap_geoparquet_catalog,
+    read_parquet_metadata,
+)
 from .converter import (
-    convert_bedmap_csv,
     batch_convert_bedmap,
+    convert_bedmap_csv,
     parse_bedmap_metadata,
 )
-
 from .geometry import (
-    extract_flight_lines,
-    calculate_haversine_distances,
-    simplify_multiline_geometry,
-    calculate_bbox,
-    get_polar_bounds,
-    check_intersects_polar,
+    _transformer_from_polar,
     # Expose transformers for direct use
     _transformer_to_polar,
-    _transformer_from_polar,
+    calculate_bbox,
+    calculate_haversine_distances,
+    check_intersects_polar,
+    extract_flight_lines,
+    get_polar_bounds,
+    simplify_multiline_geometry,
 )
-
-from .catalog import (
-    read_parquet_metadata,
-    build_bedmap_geoparquet_catalog,
-)
-
 from .query import (
+    fetch_bedmap,
+    get_bedmap_cache_path,
     query_bedmap,
     query_bedmap_catalog,
     query_bedmap_local,
-    fetch_bedmap,
-    get_bedmap_cache_path,
 )
 
 __all__ = [

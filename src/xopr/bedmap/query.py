@@ -6,23 +6,22 @@ using rustac for STAC catalog searches and DuckDB for partial reads from
 cloud-optimized GeoParquet files.
 """
 
+import warnings
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
+
+import antimeridian
 import duckdb
 import geopandas as gpd
 import requests
-from typing import Optional, List, Dict, Tuple, Union
-from datetime import datetime
-from pathlib import Path
-import warnings
-
-import antimeridian
 import shapely
 from rustac import DuckdbClient
 
+from ..stac_cache import get_bedmap_catalog_path
 from .geometry import (
     get_polar_bounds,
 )
-from ..stac_cache import get_bedmap_catalog_path
-
 
 # Cloud URLs for bedmap STAC catalog files
 BEDMAP_CATALOG_URLS = {

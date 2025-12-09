@@ -1,10 +1,11 @@
+import warnings
+from typing import Iterable, Union
+
+import geopandas as gpd
 import xarray as xr
 
-from typing import Iterable, Union
-import warnings
-import geopandas as gpd
-
 from xopr.util import get_ror_display_name, merge_dicts_no_conflicts
+
 
 def merge_frames(frames: Iterable[xr.Dataset]) -> Union[list[xr.Dataset], xr.Dataset]:
     """

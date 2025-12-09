@@ -1,9 +1,10 @@
+import itertools
+import json
+from typing import Any, Dict, List, Optional, Sequence, TypeVar
+
 import numpy as np
 import pandas as pd
-import itertools
 import requests
-import json
-from typing import Dict, Any, List, Sequence, TypeVar, Optional
 
 T = TypeVar("T")
 

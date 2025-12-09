@@ -5,10 +5,11 @@ It includes functions to retrieve segment IDs, layer points, and segment metadat
 """
 
 import base64
-import requests
 import json
-import urllib.parse
 import time
+import urllib.parse
+
+import requests
 
 ops_base_url = "https://ops.cresis.ku.edu/ops"
 

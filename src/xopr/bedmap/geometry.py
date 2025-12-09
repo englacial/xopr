@@ -8,14 +8,15 @@ This module provides functions for:
 - Polar projection transformations for Antarctic data
 """
 
+from typing import Optional, Tuple
+
 import numpy as np
 import pandas as pd
 import shapely
+from haversine import Unit, haversine_vector
+from pyproj import CRS, Transformer
 from shapely.geometry import LineString, MultiLineString
 from shapely.ops import transform as shapely_transform
-from typing import Tuple, Optional
-from haversine import haversine_vector, Unit
-from pyproj import Transformer, CRS
 
 # Antarctic Polar Stereographic projection (EPSG:3031)
 ANTARCTIC_CRS = CRS.from_epsg(3031)

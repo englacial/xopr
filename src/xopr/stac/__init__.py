@@ -7,17 +7,23 @@ across radar campaigns and data products.
 """
 
 from .catalog import (
-    create_collection, create_item,
+    build_catalog_from_parquet_metadata,
+    create_collection,
+    create_item,
     create_items_from_flight_data,
     export_collection_to_parquet,
-    build_catalog_from_parquet_metadata
 )
 from .config import load_config, save_config, validate_config
 from .geometry import (
     build_collection_extent_and_geometry,
-    simplify_geometry_polar_projection
+    simplify_geometry_polar_projection,
 )
-from .metadata import extract_item_metadata, discover_campaigns, discover_flight_lines, collect_uniform_metadata
+from .metadata import (
+    collect_uniform_metadata,
+    discover_campaigns,
+    discover_flight_lines,
+    extract_item_metadata,
+)
 
 __all__ = [
     # Configuration

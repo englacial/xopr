@@ -1,12 +1,20 @@
 """Tests for STAC catalog creation functionality."""
 
-import numpy as np
 from unittest.mock import patch
 
+import numpy as np
 
 from xopr.stac.catalog import create_items_from_flight_data
-from .common import (create_mock_metadata, create_mock_flight_data, TEST_DOI,
-                     TEST_CITATION, SCI_EXT, SAR_EXT, get_test_config)
+
+from .common import (
+    SAR_EXT,
+    SCI_EXT,
+    TEST_CITATION,
+    TEST_DOI,
+    create_mock_flight_data,
+    create_mock_metadata,
+    get_test_config,
+)
 
 
 class TestCreateItemsFromFlightData:

@@ -5,12 +5,13 @@ Tests the fix for handling both uint8 and uint16 MATLAB char arrays,
 particularly for Unicode characters that would fail with the old decoder.
 """
 
-import tempfile
 import os
-import numpy as np
-import h5py
-import pytest
+import tempfile
 from pathlib import Path
+
+import h5py
+import numpy as np
+import pytest
 
 from xopr.matlab_attribute_utils import decode_hdf5_matlab_variable
 

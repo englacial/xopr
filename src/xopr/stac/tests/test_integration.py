@@ -2,10 +2,17 @@
 
 from unittest.mock import patch
 
-from xopr.stac.metadata import extract_item_metadata
 from xopr.stac.catalog import create_items_from_flight_data
-from .common import (create_mock_dataset, create_mock_metadata,
-                     create_mock_flight_data, SCI_EXT, SAR_EXT, get_test_config)
+from xopr.stac.metadata import extract_item_metadata
+
+from .common import (
+    SAR_EXT,
+    SCI_EXT,
+    create_mock_dataset,
+    create_mock_flight_data,
+    create_mock_metadata,
+    get_test_config,
+)
 
 
 class TestSTACIntegration:

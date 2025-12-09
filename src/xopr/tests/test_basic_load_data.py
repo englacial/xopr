@@ -2,9 +2,10 @@
 Spot test basic loading of OPR data
 """
 
-import pytest
 import numpy as np
+import pytest
 import xarray as xr
+
 import xopr
 from xopr.util import equivalent
 

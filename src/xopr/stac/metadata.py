@@ -8,16 +8,17 @@ removing the need for multiple parameters.
 import re
 import warnings
 from pathlib import Path
-from typing import Dict, List, Any, Union, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
-from shapely.geometry import LineString, Point, box
 from omegaconf import DictConfig
+from shapely.geometry import LineString, Point, box
 
 from xopr.opr_access import OPRConnection
+
 from .geometry import simplify_geometry_polar_projection
 
 

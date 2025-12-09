@@ -2,36 +2,36 @@
 Unit tests for bedmap module.
 """
 
-import pytest
+import json
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+import geopandas as gpd
 import numpy as np
 import pandas as pd
-import geopandas as gpd
-from pathlib import Path
-import tempfile
-import json
-from datetime import datetime, timezone
-from shapely.geometry import Point, LineString, MultiLineString, box
+import pytest
+from shapely.geometry import LineString, MultiLineString, Point, box
+from shapely.ops import transform as shapely_transform
 
 # Import bedmap modules
 from xopr.bedmap import (
-    calculate_haversine_distances,
-    extract_flight_lines,
-    simplify_multiline_geometry,
-    parse_bedmap_metadata,
-    convert_bedmap_csv,
-    query_bedmap_local,
-    _transformer_to_polar,
     _transformer_from_polar,
+    _transformer_to_polar,
+    calculate_haversine_distances,
+    convert_bedmap_csv,
+    extract_flight_lines,
+    parse_bedmap_metadata,
+    query_bedmap_local,
+    simplify_multiline_geometry,
 )
 from xopr.bedmap.converter import _extract_bedmap_version, create_timestamps
 from xopr.bedmap.geometry import (
     calculate_bbox,
-    get_polar_bounds,
     check_intersects_polar,
+    get_polar_bounds,
 )
-from xopr.bedmap.query import build_duckdb_query, _crosses_antimeridian
-from shapely.ops import transform as shapely_transform
-
+from xopr.bedmap.query import _crosses_antimeridian, build_duckdb_query
 
 # =============================================================================
 # Pytest Fixtures - Reusable test data
@@ -585,8 +585,9 @@ class TestCatalog:
 
     def test_build_bedmap_geoparquet_catalog(self):
         """Test building GeoParquet catalog from parquet files."""
-        from xopr.bedmap.catalog import build_bedmap_geoparquet_catalog
         import pyarrow.parquet as pq
+
+        from xopr.bedmap.catalog import build_bedmap_geoparquet_catalog
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)

@@ -13,6 +13,7 @@ from importlib.resources import files
 from math import ceil
 from typing import Literal
 
+from xarray.core.datatree import DataTree
 from xarray.core.formatting import (
     inherited_vars,
     inline_index_repr,
@@ -20,7 +21,6 @@ from xarray.core.formatting import (
     short_data_repr,
 )
 from xarray.core.options import OPTIONS, _get_boolean_with_default
-from xarray.core.datatree import DataTree
 
 STATIC_FILES = (
     ("xarray.static.html", "icons-svg-inline.html"),
