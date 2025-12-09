@@ -1,6 +1,6 @@
 # Bedmap Flight Line Coverage
 
-:::{polar-map} /_static/maps/polar.html
+:::{polar-map}
 :width: 100%
 :height: 600px
 :pole: south
