@@ -32,7 +32,7 @@ Check out our [documentation](https://docs.englacial.org/xopr/) to get started. 
 
 ## License
 
-This library was originally written by Thomas Teisberg and Shane Grigsby. It is open source and licensed udner the [MIT License](./LICENSE).
+This library was originally written by Thomas Teisberg and Shane Grigsby. It is open source and licensed under the [MIT License](./LICENSE).
 
 <!-- Hidden tracking values for GitHub Action -->
 <!-- ARCTIC_VALUE: 612696 -->
