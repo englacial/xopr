@@ -168,7 +168,11 @@ def extract_item_metadata(
     center_freq = float((low_freq + high_freq) / 2)
     
     # Extract science metadata
-    doi = ds.attrs.get('doi', None)
+    if 'DOI' in ds.attrs:
+        doi = ds.attrs['DOI']
+    else:
+        doi = ds.attrs.get('doi', None)
+    
     cite = ds.attrs.get('funder_text', None)
     mime = ds.attrs['mimetype']
     

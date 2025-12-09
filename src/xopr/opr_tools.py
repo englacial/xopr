@@ -76,22 +76,40 @@ def generate_citation(ds : xr.Dataset) -> str:
 
         citation_string += "== Data Citation ==\n"
 
-        if 'ror' in ds.attrs and ds.attrs['ror']:
+        # Find the right key for ROR
+        ror_key = None
+        if 'ror' in ds.attrs:
+            ror_key = 'ror'
+        elif 'Organization' in ds.attrs:
+            ror_key = 'Organization'
+
+        if ror_key and ds.attrs[ror_key]:
             any_citation_info = True
-            if isinstance(ds.attrs['ror'], (set, list)):
-                institution_name = ', '.join([get_ror_display_name(ror) for ror in ds.attrs['ror']])
+            if isinstance(ds.attrs[ror_key], (set, list)):
+                institution_name = ', '.join([get_ror_display_name(ror) for ror in ds.attrs[ror_key]])
             else:
-                institution_name = get_ror_display_name(ds.attrs['ror'])
+                institution_name = get_ror_display_name(ds.attrs[ror_key])
 
             citation_string += f"This data was collected by {institution_name}.\n"
 
-        if 'doi' in ds.attrs and ds.attrs['doi']:
-            any_citation_info = True
-            citation_string += f"Please cite the dataset DOI: https://doi.org/{ds.attrs['doi']}\n"
+        # Find the right key for DOI
+        doi_key = None
+        if 'doi' in ds.attrs:
+            doi_key = 'doi'
+        elif 'DOI' in ds.attrs:
+            doi_key = 'DOI'
 
-        if 'funder_text' in ds.attrs and ds.attrs['funder_text']:
+        if doi_key and ds.attrs[doi_key]:
+            any_citation_info = True
+            citation_string += f"Please cite the dataset DOI: https://doi.org/{ds.attrs[doi_key]}\n"
+
+        if 'funder_text' in ds.attrs and ds.attrs['funder_text']: # Old style funding acknowledgement
             any_citation_info = True
             citation_string += f"Please include the following funder acknowledgment:\n{ds.attrs['funder_text']}\n"
+        
+        if 'Funding' in ds.attrs and ds.attrs['Funding']: # New style funding acknowledgement
+            any_citation_info = True
+            citation_string += f"Data collection was funded by: {ds.attrs['Funding']}\n"
 
         if not any_citation_info:
             citation_string += "No specific citation information was retrieved for this dataset. By default, please cite:\n"

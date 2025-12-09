@@ -51,7 +51,12 @@ def test_get_segment_metadata_valid_flights(season, flight_id):
     data = result['data']
     assert data is not None, f"Expected non-null data for {season}/{flight_id}"
     
-    expected_keys = ['dois', 'funding_sources', 'rors']
+    if 'metadata' in data:
+        # New style response from OPS API
+        data = data['metadata']
+        expected_keys = ['DOI', 'Funding', 'Organization']
+    else:
+        expected_keys = ['dois', 'funding_sources', 'rors']
 
     for key in expected_keys:
         assert key in data, f"Expected key '{key}' in data for {season}/{flight_id}"

@@ -353,18 +353,38 @@ class OPRConnection:
                     warnings.warn(f"Warning: Unexpected result from ops_api: {result['data']}", UserWarning)
                 else:
                     result_data = {}
-                    for key, value in result['data'].items():
-                        if len(value) == 1:
+                    result_data = result['data']
+                    if 'metadata' in result_data:
+                        result_data = result_data['metadata'] # New style response from OPS API
+                        new_api = True
+                    else:
+                        new_api = False
+                    
+                    # Flatten lists with single items to just the item, and convert lists with multiple items to sets
+                    for key, value in result_data.items():
+                        if len(value) == 0:
+                            result_data[key] = None
+                        elif len(value) == 1:
                             result_data[key] = value[0]
                         elif len(value) > 1:
                             result_data[key] = set(value)
 
-                    if 'dois' in result_data:
-                        ds.attrs['doi'] = result_data['dois']
-                    if 'rors' in result_data:
-                        ds.attrs['ror'] = result_data['rors']
-                    if 'funding_sources' in result_data:
-                        ds.attrs['funder_text'] = result_data['funding_sources']
+                    # These match on the old style keys from the OPS API for backwards compatibility
+                    if new_api:
+                        for k, v in result_data.items():
+                            if k in ds.attrs:
+                                if ds.attrs[k] != v:
+                                    warnings.warn(f"Warning: Conflicting value for attribute '{k}': existing value '{ds.attrs[k]}', new value '{v}'", UserWarning)
+                            ds.attrs[k] = v
+                    else:
+                        if 'dois' in result_data:
+                            ds.attrs['DOI'] = result_data['dois']
+                        if 'rors' in result_data:
+                            ds.attrs['Organization'] = result_data['rors']
+                        if 'funding_sources' in result_data:
+                            ds.attrs['funder_text'] = result_data['funding_sources']
+                    
+
 
         # Add the rest of the Matlab parameters
         if filetype == 'hdf5':
