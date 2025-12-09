@@ -12,9 +12,7 @@ import warnings
 
 import pyarrow.parquet as pq
 import geopandas as gpd
-import pandas as pd
 from shapely import wkb, wkt
-from shapely.geometry import MultiLineString, LineString
 
 
 def read_parquet_metadata(parquet_path: Union[str, Path]) -> Dict:

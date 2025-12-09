@@ -2,13 +2,12 @@
 # I just wanted something to quickly demonstrate what units might looks like.
 # Should be carefully reviewed.
 
-import xarray as xr
 import numpy as np
 
 def apply_cf_compliant_attrs(ds):
     """
     Apply CF-compliant units and comments to radar echogram dataset variables.
-    
+
     Parameters
     ----------
     ds : xarray.Dataset
@@ -19,10 +18,10 @@ def apply_cf_compliant_attrs(ds):
     xarray.Dataset
         Dataset with CF-compliant attributes applied.
     """
-    
+
     # Create a copy to avoid modifying the original dataset
     ds_cf = ds.copy()
-    
+
     # Define CF-compliant attributes for coordinates
     coordinate_attrs = {
         'slow_time': {
@@ -38,7 +37,7 @@ def apply_cf_compliant_attrs(ds):
             'comment': 'Two-way travel time from radar to target and back'
         }
     }
-    
+
     # Define CF-compliant attributes for data variables
     data_var_attrs = {
         'Bottom': {
@@ -111,17 +110,17 @@ def apply_cf_compliant_attrs(ds):
             'valid_min': 0.0
         }
     }
-    
+
     # Apply coordinate attributes
     for coord_name, attrs in coordinate_attrs.items():
         if coord_name in ds_cf.coords:
             ds_cf[coord_name].attrs.update(attrs)
-    
+
     # Apply data variable attributes
     for var_name, attrs in data_var_attrs.items():
         if var_name in ds_cf.data_vars:
             ds_cf[var_name].attrs.update(attrs)
-    
+
     # Add global attributes for CF compliance
     global_attrs = {
         'Conventions': 'CF-1.8',
@@ -138,11 +137,11 @@ def apply_cf_compliant_attrs(ds):
         'time_coverage_start': str(ds_cf.slow_time.min().values) if 'slow_time' in ds_cf else None,
         'time_coverage_end': str(ds_cf.slow_time.max().values) if 'slow_time' in ds_cf else None
     }
-    
+
     # Remove None values from global attributes
     global_attrs = {k: v for k, v in global_attrs.items() if v is not None}
-    
+
     # Update global attributes
     ds_cf.attrs.update(global_attrs)
-    
+
     return ds_cf

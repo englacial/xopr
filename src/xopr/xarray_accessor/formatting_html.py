@@ -11,7 +11,7 @@ from functools import lru_cache, partial
 from html import escape
 from importlib.resources import files
 from math import ceil
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from xarray.core.formatting import (
     inherited_vars,

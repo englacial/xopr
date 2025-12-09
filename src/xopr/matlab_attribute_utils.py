@@ -35,7 +35,7 @@ def decode_hdf5_matlab_variable(h5var, skip_variables=False, debug_path="", skip
     if h5file is None:
         h5file = h5var.file
     matlab_class = h5var.attrs.get('MATLAB_class', None)
-    
+
     # Handle MATLAB_class as either bytes or string
     if matlab_class and (matlab_class == b'cell' or matlab_class == 'cell'):
         return dereference_h5value(h5var[:], h5file=h5file, make_array=False)
@@ -43,11 +43,11 @@ def decode_hdf5_matlab_variable(h5var, skip_variables=False, debug_path="", skip
         # Check if this is an empty MATLAB char array
         if h5var.attrs.get('MATLAB_empty', 0):
             return ''
-        
+
         # MATLAB stores char arrays as uint16 (Unicode code points)
         # or sometimes uint8 (ASCII). Handle both cases properly.
         data = h5var[:]
-        
+
         if data.dtype == np.dtype('uint16'):
             # Each uint16 value is a Unicode code point (UCS-2/UTF-16)
             # Convert to string by treating each value as a character code

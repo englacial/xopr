@@ -33,11 +33,11 @@ try:
 except ImportError:
     __version__ = "unknown"
 
-from .opr_access import OPRConnection
-from .opr_tools import merge_frames, find_intersections
-from .radar_util import layer_twtt_to_range, interpolate_to_vertical_grid
+from .opr_access import OPRConnection as OPRConnection
+from .opr_tools import merge_frames as merge_frames, find_intersections as find_intersections
+from .radar_util import layer_twtt_to_range as layer_twtt_to_range, interpolate_to_vertical_grid as interpolate_to_vertical_grid
 
-from . import geometry
+from . import geometry as geometry
 
 # Import Xarray Dataset accessor
-from .xarray_accessor.xopr_accessor import XoprAccessor
+from .xarray_accessor.xopr_accessor import XoprAccessor as XoprAccessor

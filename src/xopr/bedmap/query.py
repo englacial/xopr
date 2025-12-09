@@ -8,7 +8,6 @@ cloud-optimized GeoParquet files.
 
 import duckdb
 import geopandas as gpd
-import numpy as np
 import requests
 from typing import Optional, List, Dict, Tuple, Union
 from datetime import datetime
@@ -17,11 +16,9 @@ import warnings
 
 import antimeridian
 import shapely
-from shapely.geometry import shape
 from rustac import DuckdbClient
 
 from .geometry import (
-    check_intersects_polar,
     get_polar_bounds,
 )
 from ..stac_cache import get_bedmap_catalog_path

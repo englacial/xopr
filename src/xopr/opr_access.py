@@ -1,12 +1,10 @@
-from typing import Iterable, Optional, Union
+from typing import Union
 import warnings
 import xarray as xr
 import fsspec
 import pandas as pd
 import numpy as np
-import requests
 import re
-import json
 import scipy.io
 import geopandas as gpd
 import shapely
@@ -17,7 +15,6 @@ import hdf5storage
 
 from .cf_units import apply_cf_compliant_attrs
 from .matlab_attribute_utils import decode_hdf5_matlab_variable, extract_legacy_mat_attributes
-from .util import merge_dicts_no_conflicts
 from . import ops_api
 from . import opr_tools
 
@@ -75,7 +72,7 @@ class OPRConnection:
         Query for radar frames based on various search criteria. Each parameter is
         treated as an independent criteria. If multiple parameters are passed, they are
         combined with AND logic.
-        
+
         A list of values may be passed to most parameters. If so, any values in the list
         will be treated as a match.
 
@@ -109,7 +106,7 @@ class OPRConnection:
         # Exclude geometry -- do not return the geometry field to reduce response size
         if exclude_geometry:
             search_params['exclude'] = ['geometry']
-        
+
         # Handle collections (seasons)
         if collections is not None:
             search_params['collections'] = [collections] if isinstance(collections, str) else collections
@@ -182,7 +179,7 @@ class OPRConnection:
                 "op": "=",
                 "args": [{"property": key}, value]
             })
-        
+
         # Combine all filter conditions with AND
         if filter_conditions:
             if len(filter_conditions) == 1:
@@ -192,9 +189,9 @@ class OPRConnection:
                     "op": "and",
                     "args": filter_conditions
                 }
-            
+
             search_params['filter'] = filter_expr
-        
+
         # Add any extra kwargs to search
         search_params.update(search_kwargs)
 
@@ -210,7 +207,7 @@ class OPRConnection:
         if not items or len(items) == 0:
             warnings.warn("No items found matching the query criteria", UserWarning)
             return None
-        
+
         # Convert to GeoDataFrame
         items_df = gpd.GeoDataFrame(items)
         # Set index
@@ -285,20 +282,20 @@ class OPRConnection:
         xr.Dataset
             The loaded radar frame as an xarray Dataset.
         """
-        
+
         assets = stac_item['assets']
-        
+
         # Get the data asset
         data_asset = assets.get(data_product)
         if not data_asset:
             available_assets = list(assets.keys())
             raise ValueError(f"No {data_product} asset found. Available assets: {available_assets}")
-        
+
         # Get the URL from the asset
         url = data_asset.get('href')
         if not url:
             raise ValueError(f"No href found in {data_product} asset")
-        
+
         # Load the frame using the existing method
         return self.load_frame_url(url)
 
@@ -379,14 +376,14 @@ class OPRConnection:
                                                           skip_errors=True))
 
         return ds
-    
+
     def _load_frame_hdf5(self, file) -> xr.Dataset:
         """
         Load a radar frame from an HDF5 file.
 
         Parameters
         ----------
-        file : 
+        file :
             The path to the HDF5 file containing radar frame data.
 
         Returns
@@ -411,7 +408,7 @@ class OPRConnection:
             if ds[var].ndim == 0:
                 ds.attrs[var] = ds[var].item()
                 ds = ds.drop_vars(var)
-        
+
         # Make the file_type an attribute
         if 'file_type' in ds.data_vars:
             ds.attrs['file_type'] = ds['file_type'].to_numpy()
@@ -429,14 +426,14 @@ class OPRConnection:
         ds = ds.swap_dims({'slow_time_idx': 'slow_time'})
 
         return ds
-    
+
     def _load_frame_matlab(self, file) -> xr.Dataset:
         """
         Load a radar frame from a MATLAB file.
 
         Parameters
         ----------
-        file : 
+        file :
             The path to the MATLAB file containing radar frame data.
 
         Returns
@@ -444,7 +441,7 @@ class OPRConnection:
         xr.Dataset
             The loaded radar frame as an xarray Dataset.
         """
-        
+
         m = scipy.io.loadmat(file, mat_dtype=False)
 
         key_dims = {
@@ -459,7 +456,7 @@ class OPRConnection:
             'Surface': ('slow_time',),
             'Data': ('twtt', 'slow_time')
         }
-        
+
         ds = xr.Dataset(
             {
                 key: (dims, np.squeeze(m[key])) for key, dims in key_dims.items() if key in m
@@ -501,7 +498,7 @@ class OPRConnection:
         """
         # Query STAC API for all items in collection (exclude geometry for better performance)
         items = self.query_frames(collections=[collection_id], exclude_geometry=True)
-        
+
         if items is None or len(items) == 0:
             print(f"No items found in collection '{collection_id}'")
             return []
@@ -512,7 +509,7 @@ class OPRConnection:
             properties = item['properties']
             date = properties['opr:date']
             flight_num = properties['opr:segment']
-            
+
             if date and flight_num is not None:
                 segment_path = f"{date}_{flight_num:02d}"
 
@@ -540,7 +537,7 @@ class OPRConnection:
         Fetch layers from the CSARP_layers files
 
         See https://gitlab.com/openpolarradar/opr/-/wikis/Layer-File-Guide for file formats
-        
+
         Parameters
         ----------
         segment : Union[xr.Dataset, dict]
@@ -573,13 +570,13 @@ class OPRConnection:
                     layer_items.append(item)
         else:
             layer_items = [segment] if 'CSARP_layer' in segment.get('assets', {}) else []
-        
+
         if not layer_items:
             if raise_errors:
                 raise ValueError(f"No CSARP_layer files found for segment path {segment_path} in collection {collection}")
             else:
                 return {}
-        
+
         # Load each layer file and combine them
         layer_frames = []
         for item in layer_items:
@@ -593,13 +590,13 @@ class OPRConnection:
                     raise e # TODO
                     print(f"Warning: Failed to load layer file {url}: {e}")
                     continue
-        
+
         if not layer_frames:
             if raise_errors:
                 raise ValueError(f"No valid CSARP_layer files could be loaded for segment {segment_path} in collection {collection}")
             else:
                 return {}
-        
+
         # Concatenate all layer frames along slow_time dimension
         layers_segment = xr.concat(layer_frames, dim='slow_time', combine_attrs='drop_conflicts', data_vars='minimal')
         layers_segment = layers_segment.sortby('slow_time')
@@ -632,7 +629,7 @@ class OPRConnection:
 
             layer_ds = layers_segment.sel(layer=layer_id)
             layers[layer_display_name] = layer_ds
-        
+
         return layers
 
     def _trim_to_bounds(self, ds: xr.Dataset, ref: Union[xr.Dataset, dict]) -> xr.Dataset:
@@ -654,12 +651,12 @@ class OPRConnection:
     def load_layers_file(self, url: str) -> xr.Dataset:
         """
         Load layer data from a CSARP_layer file (either HDF5 or MATLAB format).
-        
+
         Parameters
         ----------
         url : str
             URL or path to the layer file
-            
+
         Returns
         -------
         xr.Dataset
@@ -668,7 +665,7 @@ class OPRConnection:
             And data variables:
             - twtt: Two-way travel time for each layer
             - quality: Quality values for each layer
-            - type: Type values for each layer  
+            - type: Type values for each layer
             - lat, lon, elev: Geographic coordinates
             - id: Layer IDs
         """
@@ -685,25 +682,25 @@ class OPRConnection:
         if 'gps_time' in ds.variables:
             slow_time_dt = pd.to_datetime(ds['gps_time'].values, unit='s')
             ds = ds.assign_coords(slow_time=('slow_time', slow_time_dt))
-            
+
             # Set slow_time as the main coordinate and remove gps_time from data_vars
             if 'slow_time' not in ds.dims:
                 ds = ds.swap_dims({'gps_time': 'slow_time'})
-            
+
             # Remove gps_time from data_vars if it exists there to avoid conflicts
             if ('gps_time' in ds.data_vars) or ('gps_time' in ds.coords):
                 ds = ds.drop_vars('gps_time')
-        
+
         # Sort by slow_time if it exists
         if 'slow_time' in ds.coords:
             ds = ds.sortby('slow_time')
 
         return ds
-    
+
     def _load_layers(self, file) -> xr.Dataset:
         """
         Load layer data file using hdf5storage
-        
+
         Parameters:
         file : str
             Path to the layer file
@@ -746,16 +743,16 @@ class OPRConnection:
         ds = ds.assign_coords({'layer': ds['id'], 'slow_time': ds['gps_time']})
 
         return ds
-    
+
     def _load_layer_organization(self, file) -> xr.Dataset:
         """
         Load a layer organization file
-        
+
         Parameters
         ----------
         file : str
             Path to the HDF5 layer organization file
-            
+
         Returns
         -------
         xr.Dataset
@@ -773,7 +770,7 @@ class OPRConnection:
             'lyr_name': (('lyr_id',), np.atleast_1d(d['lyr_name'].squeeze())),
             'lyr_order': (('lyr_id',), np.atleast_1d(d['lyr_order'].squeeze())),
             }, attrs={'param': d['param']})
-        
+
         ds = ds.set_index(lyr_id='lyr_id')
 
         return ds
@@ -803,7 +800,7 @@ class OPRConnection:
             location = 'arctic'
         else:
             raise ValueError("Dataset does not belong to a recognized location (Antarctica or Greenland).")
-        
+
         layer_points = ops_api.get_layer_points(
             segment_name=segment_path,
             season_name=collection,

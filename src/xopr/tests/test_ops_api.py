@@ -4,8 +4,6 @@ as expected and also verifies that the OPS API has not changed in any breaking w
 """
 
 import pytest
-import numpy as np
-import xarray as xr
 import xopr.opr_access as xopr
 import xopr.ops_api
 
@@ -32,25 +30,25 @@ invalid_flights = [
 def test_get_segment_metadata_valid_flights(season, flight_id):
     """
     Test that get_segment_metadata returns expected response structure for valid flights.
-    
+
     This test verifies that valid flight combinations return a successful response
     containing comprehensive segment metadata.
     """
     result = xopr.ops_api.get_segment_metadata(flight_id, season)
-    
+
     # Should return a dict (not None) for valid flights
     assert result is not None, f"Expected dict response for valid flight {season}/{flight_id}, got None"
     assert isinstance(result, dict), f"Expected dict response for {season}/{flight_id}, got {type(result)}"
-    
+
     # Should have successful status
     assert result.get('status') == 1, f"Expected successful status for {season}/{flight_id}, got {result.get('status')}"
-    
+
     # Should contain data with metadata information
     assert 'data' in result, f"Expected 'data' key in response for {season}/{flight_id}"
-    
+
     data = result['data']
     assert data is not None, f"Expected non-null data for {season}/{flight_id}"
-    
+
     expected_keys = ['dois', 'funding_sources', 'rors']
 
     for key in expected_keys:

@@ -86,14 +86,14 @@ def test_load_season(collection, segment_path):
         db_layers_loaded = True
     except ValueError as e:
         pass
-    
+
     if not db_layers_loaded:
         print("Loading layers from file...")
         layers = opr.get_layers(flight, source='files')
         print(layers)
         if len(layers) > 1:
             file_layers_loaded = True
-    
+
     assert db_layers_loaded or file_layers_loaded, "No layers loaded from either database or file"
 
 def test_cache_data(tmp_path):
@@ -141,7 +141,7 @@ def test_exclude_geometry(query_params):
     assert len(items_with_geometry) > 0, "Expected query to return items"
 
     items_without_geometry = opr.query_frames(**query_params, exclude_geometry=True, max_items=max_items)
-    
+
     assert len(items_without_geometry) == len(items_with_geometry), "Expected same number of items with and without geometry"
 
     for item_id in items_with_geometry.index:

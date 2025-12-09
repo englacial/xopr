@@ -1,11 +1,8 @@
 """Tests for STAC catalog creation functionality."""
 
 import numpy as np
-import pytest
-from unittest.mock import Mock, patch
-from datetime import datetime
+from unittest.mock import patch
 
-import pystac
 
 from xopr.stac.catalog import create_items_from_flight_data
 from .common import (create_mock_metadata, create_mock_flight_data, TEST_DOI,
@@ -21,21 +18,21 @@ class TestCreateItemsFromFlightData:
         # Setup
         mock_extract.return_value = create_mock_metadata(doi=None, citation=None)
         flight_data = create_mock_flight_data()
-        
+
         # Test
         items = create_items_from_flight_data(flight_data, get_test_config())
-        
+
         # Assertions
         assert len(items) == 2  # Two data files in mock flight data
         item = items[0]
-        
+
         # Should not have scientific properties
         assert 'sci:doi' not in item.properties
         assert 'sci:citation' not in item.properties
-        
+
         # Should not have scientific extension
         assert SCI_EXT not in item.stac_extensions
-        
+
         # Should have OPR radar properties (no SAR extension anymore)
         assert 'opr:frequency' in item.properties
         assert 'opr:bandwidth' in item.properties
@@ -48,18 +45,18 @@ class TestCreateItemsFromFlightData:
         # Setup
         mock_extract.return_value = create_mock_metadata(doi=TEST_DOI, citation=None)
         flight_data = create_mock_flight_data()
-        
+
         # Test
         items = create_items_from_flight_data(flight_data, get_test_config())
-        
+
         # Assertions
         assert len(items) == 2
         item = items[0]
-        
+
         # Should have doi property but not citation
         assert item.properties['sci:doi'] == TEST_DOI
         assert 'sci:citation' not in item.properties
-        
+
         # Should have scientific extension
         assert SCI_EXT in item.stac_extensions
 
@@ -69,18 +66,18 @@ class TestCreateItemsFromFlightData:
         # Setup
         mock_extract.return_value = create_mock_metadata(doi=None, citation=TEST_CITATION)
         flight_data = create_mock_flight_data()
-        
+
         # Test
         items = create_items_from_flight_data(flight_data, get_test_config())
-        
+
         # Assertions
         assert len(items) == 2
         item = items[0]
-        
+
         # Should have citation property but not doi
         assert item.properties['sci:citation'] == TEST_CITATION
         assert 'sci:doi' not in item.properties
-        
+
         # Should have scientific extension
         assert SCI_EXT in item.stac_extensions
 
@@ -90,18 +87,18 @@ class TestCreateItemsFromFlightData:
         # Setup
         mock_extract.return_value = create_mock_metadata(doi=TEST_DOI, citation=TEST_CITATION)
         flight_data = create_mock_flight_data()
-        
+
         # Test
         items = create_items_from_flight_data(flight_data, get_test_config())
-        
+
         # Assertions
         assert len(items) == 2
         item = items[0]
-        
+
         # Should have both properties
         assert item.properties['sci:doi'] == TEST_DOI
         assert item.properties['sci:citation'] == TEST_CITATION
-        
+
         # Should have scientific extension
         assert SCI_EXT in item.stac_extensions
 
@@ -111,11 +108,11 @@ class TestCreateItemsFromFlightData:
         # Setup - make extract_item_metadata raise an exception
         mock_extract.side_effect = Exception("Metadata extraction failed")
         flight_data = create_mock_flight_data()
-        
+
         # Test
         with patch('builtins.print'):  # Suppress warning print
             items = create_items_from_flight_data(flight_data, get_test_config())
-        
+
         # Assertions
         assert len(items) == 0  # No items should be created
 

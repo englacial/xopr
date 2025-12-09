@@ -3,7 +3,6 @@
 import numpy as np
 import pytest
 from unittest.mock import Mock, MagicMock, patch
-from pathlib import Path
 from shapely.geometry import LineString
 
 from xopr.stac.metadata import extract_stable_wfs_params, extract_item_metadata
@@ -17,10 +16,10 @@ class TestExtractItemMetadata:
         """Test that None values are returned when doi/ror/funder_text are missing."""
         # Create dataset with no doi, ror, funder_text
         mock_ds = create_mock_dataset()
-        
+
         # Test
         result = extract_item_metadata(dataset=mock_ds)
-        
+
         # Assertions
         assert result['doi'] is None
         assert result['citation'] is None  # funder_text maps to citation
@@ -33,14 +32,14 @@ class TestExtractItemMetadata:
         """Test that actual values are returned when doi/ror/funder_text exist."""
         # Create dataset with values
         mock_ds = create_mock_dataset(
-            doi=TEST_DOI, 
-            ror=TEST_ROR, 
+            doi=TEST_DOI,
+            ror=TEST_ROR,
             funder_text=TEST_FUNDER
         )
-        
+
         # Test
         result = extract_item_metadata(dataset=mock_ds)
-        
+
         # Assertions
         assert result['doi'] == TEST_DOI
         assert result['citation'] == TEST_FUNDER
@@ -53,10 +52,10 @@ class TestExtractItemMetadata:
             f0_values=[165e6, 165e6, 165e6],
             f1_values=[215e6, 215e6, 215e6]
         )
-        
+
         # Test
         result = extract_item_metadata(dataset=mock_ds)
-        
+
         # Assertions
         assert result['frequency'] == 190e6  # center frequency
         assert result['bandwidth'] == 50e6   # |215 - 165|
@@ -69,10 +68,10 @@ class TestExtractItemMetadata:
             f0_values=[215e6, 215e6, 215e6],  # Higher frequency in f0
             f1_values=[165e6, 165e6, 165e6]   # Lower frequency in f1
         )
-        
+
         # Test
         result = extract_item_metadata(dataset=mock_ds)
-        
+
         # Assertions
         assert result['frequency'] == 190e6  # center frequency
         assert result['bandwidth'] == 50e6   # abs(165 - 215) = 50
@@ -85,7 +84,7 @@ class TestExtractItemMetadata:
             f0_values=[165e6, 170e6, 175e6],  # Multiple different values
             f1_values=[215e6, 215e6, 215e6]
         )
-        
+
         # Test - should raise ValueError
         with pytest.raises(ValueError, match="Multiple low frequency values found"):
             extract_item_metadata(dataset=mock_ds)
@@ -93,10 +92,10 @@ class TestExtractItemMetadata:
     def test_datetime_conversion(self):
         """Test that datetime is properly converted from xarray to Python datetime."""
         mock_ds = create_mock_dataset()
-        
+
         # Test
         result = extract_item_metadata(dataset=mock_ds)
-        
+
         # Assertions
         from datetime import datetime
         assert isinstance(result['date'], datetime)
@@ -107,7 +106,7 @@ class TestExtractItemMetadata:
     def test_parameter_validation_both_provided(self):
         """Test that ValueError is raised when both parameters are provided."""
         mock_ds = create_mock_dataset()
-        
+
         with pytest.raises(ValueError, match="Exactly one of mat_file_path or dataset must be provided"):
             extract_item_metadata(mat_file_path='/fake/path.mat', dataset=mock_ds)
 
@@ -127,14 +126,14 @@ class TestExtractItemMetadata:
         """Test that dataset is properly closed when loaded from file."""
         mock_opr = Mock()
         mock_opr_connection.return_value = mock_opr
-        
+
         mock_ds = create_mock_dataset()
         mock_opr.load_frame_url.return_value = mock_ds
-        
+
         # Test with string path
         with patch('pathlib.Path.exists', return_value=True):
             result = extract_item_metadata(mat_file_path='/fake/path.mat')
-        
+
         # Should work without error and close dataset
         assert 'doi' in result
         assert 'citation' in result
@@ -145,13 +144,13 @@ class TestExtractItemMetadata:
         """Test that URL paths skip local file existence checks."""
         mock_opr = Mock()
         mock_opr_connection.return_value = mock_opr
-        
+
         mock_ds = create_mock_dataset()
         mock_opr.load_frame_url.return_value = mock_ds
-        
+
         # Test with URL - should not check file existence
         result = extract_item_metadata(mat_file_path='https://example.com/data.mat')
-        
+
         # Should work without file existence error
         assert 'doi' in result
         assert 'citation' in result
@@ -160,7 +159,7 @@ class TestExtractItemMetadata:
 
 class TestExtractItemMetadataWithRealData:
     """Test extract_item_metadata with real remote data files."""
-    
+
     @pytest.mark.parametrize("data_url", [
         "https://data.cresis.ku.edu/data/rds/2016_Antarctica_DC8/CSARP_standard/20161014_03/Data_20161014_03_001.mat",
         "https://data.cresis.ku.edu/data/rds/2022_Antarctica_BaslerMKB/CSARP_standard/20221210_01/Data_20221210_01_001.mat",
@@ -170,31 +169,31 @@ class TestExtractItemMetadataWithRealData:
         """Test metadata extraction from real remote data files."""
         # Test with real remote data
         result = extract_item_metadata(mat_file_path=data_url)
-        
+
         # Basic sanity checks - all keys should be present
         expected_keys = {'geom', 'bbox', 'date', 'frequency', 'bandwidth', 'doi', 'citation', 'mimetype'}
         assert set(result.keys()) == expected_keys
-        
+
         # Check data types for always-present values
         from shapely.geometry import LineString
         from datetime import datetime
-        
+
         assert isinstance(result['geom'], LineString)
         assert isinstance(result['date'], datetime)
         assert isinstance(result['frequency'], float)
         assert isinstance(result['bandwidth'], float)
         assert isinstance(result['mimetype'], str)
-        
+
         # DOI and citation can be None or strings
         assert result['doi'] is None or isinstance(result['doi'], str)
         assert result['citation'] is None or isinstance(result['citation'], str)
-        
+
         # Geometry should have points
         assert len(result['geom'].coords) > 0
-        
+
         # Frequency should be reasonable for radar data
         assert 50e6 <= result['frequency'] <= 1000e6  # 50 MHz to 1 GHz (some older systems use lower frequencies)
-        
+
         # Bandwidth should be positive
         assert result['bandwidth'] > 0
 
@@ -206,11 +205,11 @@ class TestExtractItemMetadataWithRealData:
     def test_real_data_campaign_consistency(self, data_url, expected_campaign):
         """Test that real data extraction produces expected results for known campaigns."""
         result = extract_item_metadata(mat_file_path=data_url)
-        
+
         # Check that the date makes sense for the campaign year
         expected_year = int(expected_campaign.split('_')[0])
         assert result['date'].year == expected_year
-        
+
         # Check that coordinates are in Antarctica (roughly)
         bounds = result['bbox'].bounds
         # Antarctica is roughly between -90 to -60 latitude
@@ -224,22 +223,22 @@ class TestExtractItemMetadataWithRealData:
             "https://data.cresis.ku.edu/data/rds/2022_Antarctica_BaslerMKB/CSARP_standard/20221210_01/Data_20221210_01_001.mat",
             "https://data.cresis.ku.edu/data/rds/2019_Antarctica_GV/CSARP_standard/20191103_01/Data_20191103_01_026.mat"
         ]
-        
+
         results = []
         for url in data_urls:
             result = extract_item_metadata(mat_file_path=url)
             results.append(result)
-        
+
         # All should have the same structure
         expected_keys = {'geom', 'bbox', 'date', 'frequency', 'bandwidth', 'doi', 'citation', 'mimetype'}
         for result in results:
             assert set(result.keys()) == expected_keys
-        
+
         # All should have valid geometry
         for result in results:
             assert len(result['geom'].coords) > 0
             assert result['bandwidth'] > 0
-        
+
         # Frequencies should vary across different campaigns/years but be reasonable
         frequencies = [r['frequency'] for r in results]
         assert len(set(frequencies)) >= 1  # At least some variation
@@ -341,13 +340,13 @@ class TestCollectUniformMetadata:
         """Test that no extensions are added when no scientific metadata exists."""
         from xopr.stac.metadata import collect_uniform_metadata
         from .common import create_mock_stac_item
-        
+
         # Create items without scientific metadata
         items = [
             create_mock_stac_item(doi=None, citation=None),
             create_mock_stac_item(doi=None, citation=None)
         ]
-        
+
         # Test
         extensions, extra_fields = collect_uniform_metadata(
             items,
@@ -373,25 +372,25 @@ class TestCollectUniformMetadata:
         """Test that scientific extension is added when unique DOI exists."""
         from xopr.stac.metadata import collect_uniform_metadata
         from .common import create_mock_stac_item
-        
+
         test_doi = "10.1234/test.doi"
-        
+
         # Create items with same DOI
         items = [
             create_mock_stac_item(doi=test_doi, citation=None),
             create_mock_stac_item(doi=test_doi, citation=None)
         ]
-        
+
         # Test
         extensions, extra_fields = collect_uniform_metadata(
-            items, 
+            items,
             ['sci:doi', 'sci:citation', 'sar:center_frequency', 'sar:bandwidth']
         )
-        
+
         # Should have scientific extension
         sci_ext = 'https://stac-extensions.github.io/scientific/v1.0.0/schema.json'
         assert sci_ext in extensions
-        
+
         # Extra fields should have DOI
         assert extra_fields['sci:doi'] == test_doi
         assert 'sci:citation' not in extra_fields  # None values filtered out
@@ -400,23 +399,23 @@ class TestCollectUniformMetadata:
         """Test that scientific extension is not added when multiple different DOIs exist."""
         from xopr.stac.metadata import collect_uniform_metadata
         from .common import create_mock_stac_item
-        
+
         # Create items with different DOIs
         items = [
             create_mock_stac_item(doi="10.1234/doi1", citation=None),
             create_mock_stac_item(doi="10.1234/doi2", citation=None)
         ]
-        
+
         # Test
         extensions, extra_fields = collect_uniform_metadata(
-            items, 
+            items,
             ['sci:doi', 'sci:citation', 'sar:center_frequency', 'sar:bandwidth']
         )
-        
+
         # Should not have scientific extension due to non-uniform DOIs
         sci_ext = 'https://stac-extensions.github.io/scientific/v1.0.0/schema.json'
         # Note: SAR extension might still be present, but not SCI for DOI reasons
-        
+
         # Extra fields should not have DOI (multiple unique values)
         assert 'sci:doi' not in extra_fields
 
@@ -424,7 +423,7 @@ class TestCollectUniformMetadata:
         """Test that None values are properly filtered in uniform metadata collection."""
         from xopr.stac.metadata import collect_uniform_metadata
         from .common import create_mock_stac_item
-        
+
         # Create test items with None and non-None values
         items = [
             create_mock_stac_item(doi=None, citation="Test Citation"),
@@ -432,17 +431,17 @@ class TestCollectUniformMetadata:
             create_mock_stac_item(doi="10.1234/test", citation="Test Citation"),
             create_mock_stac_item()  # Default creates no sci properties if doi=None
         ]
-        
+
         # Test
         extensions, extra_fields = collect_uniform_metadata(
-            items, 
+            items,
             ['sci:doi', 'sci:citation', 'sar:center_frequency', 'sar:bandwidth']
         )
-        
+
         # Should have scientific extension for uniform values
         sci_ext = 'https://stac-extensions.github.io/scientific/v1.0.0/schema.json'
         assert sci_ext in extensions
-        
+
         # Should have both uniform values
         assert extra_fields['sci:doi'] == "10.1234/test"  # Uniform across non-None values
         assert extra_fields['sci:citation'] == "Test Citation"  # Uniform across non-None values

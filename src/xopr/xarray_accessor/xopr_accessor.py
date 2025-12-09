@@ -10,7 +10,7 @@ class XoprAccessor:
 
     def _repr_html_(self):
         return dataset_repr(self._obj)
-    
+
     @property
     def citation(self) -> str:
         """

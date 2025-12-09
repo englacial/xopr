@@ -21,11 +21,11 @@ test_regions = [
 def test_get_antarctic_regions(params, expected_results):
     """
     Test the get_antarctic_regions function with various parameters.
-    
+
     This test checks if the function correctly retrieves regions based on the provided parameters.
     """
     merged = xopr.geometry.get_antarctic_regions(**params, merge_regions=True)
-    
+
     # Project to requested projection
     merged = xopr.geometry.project_geojson(merged, target_crs=expected_results['projection'])
 
@@ -38,14 +38,14 @@ def test_get_antarctic_regions_fields():
     Test that get_antarctic_regions with merge_regions=False returns expected fields.
     """
     regions = xopr.geometry.get_antarctic_regions(regions='East', merge_regions=False)
-    
+
     # Check that we get a GeoDataFrame
     assert hasattr(regions, 'columns'), "Expected GeoDataFrame with columns"
-    
+
     # Check for expected fields
     expected_fields = ['NAME', 'Regions', 'Subregions', 'TYPE', 'Asso_Shelf', 'geometry']
     for field in expected_fields:
         assert field in regions.columns, f"Missing expected field: {field}"
-    
+
     # Check that we have at least one region
     assert len(regions) > 0, "Expected at least one region"

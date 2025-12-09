@@ -10,9 +10,7 @@ from pathlib import Path
 import tempfile
 import json
 from datetime import datetime, timezone
-import shapely
 from shapely.geometry import Point, LineString, MultiLineString, box
-import xarray as xr
 
 # Import bedmap modules
 from xopr.bedmap import (
