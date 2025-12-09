@@ -8,10 +8,17 @@ from unittest.mock import Mock, patch
 from stac_validator.validate import StacValidate
 
 from xopr.stac.catalog import (
-    create_collection, create_item, create_items_from_flight_data
+    create_collection,
+    create_item,
+    create_items_from_flight_data,
 )
+
 from .common import (
-    create_mock_metadata, create_mock_flight_data, TEST_DOI, TEST_CITATION, get_test_config
+    TEST_CITATION,
+    TEST_DOI,
+    create_mock_flight_data,
+    create_mock_metadata,
+    get_test_config,
 )
 
 
@@ -45,8 +52,9 @@ class TestSTACValidation:
 
     def test_validate_create_collection(self):
         """Test that collections created by create_collection() are valid."""
-        import pystac
         from datetime import datetime
+
+        import pystac
 
         # Create extent as required by create_collection
         spatial_extent = pystac.SpatialExtent(bboxes=[[-69.86, -71.37, -69.84, -71.35]])
@@ -67,8 +75,9 @@ class TestSTACValidation:
 
     def test_validate_create_item(self):
         """Test that items created by create_item() are valid."""
-        from shapely.geometry import Point, mapping
         from datetime import datetime
+
+        from shapely.geometry import Point, mapping
 
         # Create geometry and bbox for create_item
         point = Point(-69.85, -71.36)
@@ -161,10 +170,12 @@ class TestSTACValidation:
 
     def test_validate_catalog_with_metadata_aggregation(self):
         """Test that catalogs using collect_uniform_metadata produce valid STAC with proper metadata."""
-        from xopr.stac.metadata import collect_uniform_metadata
-        from xopr.stac.catalog import create_collection
-        import pystac
         from datetime import datetime
+
+        import pystac
+
+        from xopr.stac.catalog import create_collection
+        from xopr.stac.metadata import collect_uniform_metadata
 
         # Create mock items with scientific metadata that should be aggregated
         from .common import create_mock_stac_item

@@ -1,7 +1,8 @@
 from collections.abc import Iterable
+
 import h5py
-import scipy.io
 import numpy as np
+import scipy.io
 
 #
 # HDF5-format MATLAB files

@@ -16,7 +16,7 @@ import warnings
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional, Tuple, List, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import duckdb
 import geopandas as gpd
@@ -27,9 +27,9 @@ import pyarrow.parquet as pq
 from tqdm import tqdm
 
 from .geometry import (
+    calculate_bbox,
     extract_flight_lines,
     simplify_multiline_geometry,
-    calculate_bbox,
 )
 
 # Threshold for applying Hilbert sorting (rows)

@@ -1,9 +1,9 @@
 """Common utilities and mock creation functions for STAC tests."""
 
-import numpy as np
 from datetime import datetime
 from unittest.mock import Mock
 
+import numpy as np
 import pystac
 from omegaconf import OmegaConf
 from shapely.geometry import LineString, box

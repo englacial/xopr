@@ -1,22 +1,26 @@
-from typing import Union
-import warnings
-import xarray as xr
-import fsspec
-import pandas as pd
-import numpy as np
 import re
-import scipy.io
-import geopandas as gpd
-import shapely
-import h5py
-import antimeridian
-from rustac import DuckdbClient
-import hdf5storage
+import warnings
+from typing import Union
 
+import antimeridian
+import fsspec
+import geopandas as gpd
+import h5py
+import hdf5storage
+import numpy as np
+import pandas as pd
+import scipy.io
+import shapely
+import xarray as xr
+from rustac import DuckdbClient
+
+from . import opr_tools, ops_api
 from .cf_units import apply_cf_compliant_attrs
-from .matlab_attribute_utils import decode_hdf5_matlab_variable, extract_legacy_mat_attributes
-from . import ops_api
-from . import opr_tools
+from .matlab_attribute_utils import (
+    decode_hdf5_matlab_variable,
+    extract_legacy_mat_attributes,
+)
+
 
 class OPRConnection:
     def __init__(self,

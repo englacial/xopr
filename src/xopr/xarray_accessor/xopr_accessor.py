@@ -3,6 +3,7 @@ import xarray as xr
 from xopr.opr_tools import generate_citation
 from xopr.xarray_accessor.formatting_html import dataset_repr
 
+
 @xr.register_dataset_accessor("xopr")
 class XoprAccessor:
     def __init__(self, xarray_obj):

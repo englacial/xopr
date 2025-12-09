@@ -1,8 +1,10 @@
-import pytest
 import time
+
+import pytest
 
 import xopr
 import xopr.geometry
+
 
 def test_get_collections():
     """

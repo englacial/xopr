@@ -6,10 +6,11 @@ simplification, merging, and projection transformations for polar data.
 """
 
 from typing import List
-import shapely
+
 import pyproj
-from shapely.ops import transform
 import pystac
+import shapely
+from shapely.ops import transform
 
 
 def simplify_geometry_polar_projection(

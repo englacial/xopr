@@ -5,13 +5,12 @@ This module provides minimal configuration loading with OmegaConf,
 letting the library handle all the complexity.
 """
 
+import logging
 import os
 from pathlib import Path
-from typing import Optional, List, Union
-import logging
+from typing import List, Optional, Union
 
-from omegaconf import OmegaConf, DictConfig
-
+from omegaconf import DictConfig, OmegaConf
 
 # Register resolvers for common path expansions
 OmegaConf.register_new_resolver("pwd", lambda: os.getcwd())

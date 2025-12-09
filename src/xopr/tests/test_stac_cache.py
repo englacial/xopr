@@ -3,19 +3,20 @@ Unit tests for stac_cache module.
 """
 
 import os
-import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from xopr.stac_cache import (
-    get_cache_dir,
-    get_bedmap_catalog_dir,
-    ensure_bedmap_catalogs,
-    get_bedmap_catalog_path,
-    clear_bedmap_cache,
-    BEDMAP_CATALOG_FILES,
     BEDMAP_CATALOG_BASE_URL,
+    BEDMAP_CATALOG_FILES,
+    clear_bedmap_cache,
+    ensure_bedmap_catalogs,
+    get_bedmap_catalog_dir,
+    get_bedmap_catalog_path,
+    get_cache_dir,
 )
 
 
