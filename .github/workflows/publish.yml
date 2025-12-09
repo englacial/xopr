@@ -192,39 +192,40 @@ jobs:
           rm -f $NEW_ENTRY_FILE
         fi
 
-    - name: Commit changelog and requirements updates
+    - name: Create PR for changelog and requirements updates
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG_NAME: ${{ steps.get_tag.outputs.tag }}
       run: |
         git config --local user.name "github-actions[bot]"
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        
-        # Switch to main branch and pull latest changes
-        git checkout main
-        git pull origin main
-        
+
         # Check if there are any changes to commit
         if git diff --quiet CHANGELOG.md requirements.txt; then
           echo "No changes to CHANGELOG.md or requirements.txt"
         else
+          # Create a unique branch name
+          BRANCH_NAME="release-docs-${TAG_NAME}-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH_NAME"
+
           git add CHANGELOG.md requirements.txt
-          
-          # Create commit message based on what changed
-          COMMIT_MSG="docs: update for ${{ steps.get_tag.outputs.tag }}"
-          if ! git diff --quiet --cached CHANGELOG.md; then
-            COMMIT_MSG="$COMMIT_MSG (CHANGELOG.md"
-            if ! git diff --quiet --cached requirements.txt; then
-              COMMIT_MSG="$COMMIT_MSG, requirements.txt)"
-            else
-              COMMIT_MSG="$COMMIT_MSG)"
-            fi
-          elif ! git diff --quiet --cached requirements.txt; then
-            COMMIT_MSG="$COMMIT_MSG (requirements.txt)"
-          fi
-          
-          git commit -m "$COMMIT_MSG"
-          git push origin main
-          echo "✅ Files updated and pushed to main branch"
+          git commit -m "docs: update CHANGELOG.md and requirements.txt for ${TAG_NAME}"
+          git push -u origin "$BRANCH_NAME"
+
+          # Create PR
+          gh pr create \
+            --title "docs: update for release ${TAG_NAME}" \
+            --body "Automated update from publish workflow.
+
+          **Updates:**
+          - CHANGELOG.md with release notes for ${TAG_NAME}
+          - requirements.txt with current dependencies
+
+          🤖 Generated with GitHub Actions" \
+            --base main \
+            --head "$BRANCH_NAME"
+
+          echo "✅ PR created for changelog and requirements updates"
         fi
 
   build:
