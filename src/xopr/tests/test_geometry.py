@@ -37,7 +37,7 @@ def test_get_antarctic_regions_fields():
     """
     Test that get_antarctic_regions with merge_regions=False returns expected fields.
     """
-    regions = xopr.geometry.get_antarctic_regions(regions='East', merge_regions=False)
+    regions = xopr.geometry.get_antarctic_regions(region='East', merge_regions=False)
 
     # Check that we get a GeoDataFrame
     assert hasattr(regions, 'columns'), "Expected GeoDataFrame with columns"
