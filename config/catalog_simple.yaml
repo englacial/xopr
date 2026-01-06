@@ -37,6 +37,20 @@ geometry:
   simplify: true
   tolerance: 100.0
 
+# Radar frequency configuration (optional)
+# Only needed for old files that don't encode frequency metadata
+radar:
+  f0: null      # Low frequency in Hz (e.g., 165e6)
+  f1: null      # High frequency in Hz (e.g., 215e6)
+  override: false  # If true, use config values even when data has metadata
+
+# Scientific metadata configuration (optional)
+# Only needed for old files that don't encode DOI/citation metadata
+sci:
+  doi: null       # DOI string (e.g., "10.1234/example.doi")
+  citation: null  # Citation/funder text
+  override: false # If true, use config values even when data has metadata
+
 # Environment overrides (optional)
 environments:
   test:

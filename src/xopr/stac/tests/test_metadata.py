@@ -452,3 +452,313 @@ class TestCollectUniformMetadata:
         # Should have both uniform values
         assert extra_fields['sci:doi'] == "10.1234/test"  # Uniform across non-None values
         assert extra_fields['sci:citation'] == "Test Citation"  # Uniform across non-None values
+
+
+class TestFrequencyFallback:
+    """Test frequency extraction fallback and override behavior."""
+
+    def test_frequency_fallback_from_config(self):
+        """Test that config values are used when extraction fails."""
+        from omegaconf import OmegaConf
+
+        # Create dataset without wfs params
+        mock_ds = create_mock_dataset(include_wfs=False)
+
+        # Create config with radar frequency fallback
+        conf = OmegaConf.create({
+            'radar': {
+                'f0': 150e6,
+                'f1': 200e6,
+                'override': False
+            },
+            'geometry': {'simplify': False},
+            'logging': {'verbose': False}
+        })
+
+        # Test
+        result = extract_item_metadata(dataset=mock_ds, conf=conf)
+
+        # Should use config values
+        assert result['frequency'] == 175e6  # (150 + 200) / 2
+        assert result['bandwidth'] == 50e6   # |200 - 150|
+
+    def test_frequency_extraction_preferred_over_config(self):
+        """Test that extraction takes precedence when override=false."""
+        from omegaconf import OmegaConf
+
+        # Create dataset with wfs params
+        mock_ds = create_mock_dataset(
+            f0_values=[165e6, 165e6, 165e6],
+            f1_values=[215e6, 215e6, 215e6]
+        )
+
+        # Create config with different values
+        conf = OmegaConf.create({
+            'radar': {
+                'f0': 100e6,
+                'f1': 300e6,
+                'override': False
+            },
+            'geometry': {'simplify': False},
+            'logging': {'verbose': False}
+        })
+
+        # Test
+        result = extract_item_metadata(dataset=mock_ds, conf=conf)
+
+        # Should use extracted values, not config
+        assert result['frequency'] == 190e6  # (165 + 215) / 2
+        assert result['bandwidth'] == 50e6   # |215 - 165|
+
+    def test_frequency_config_override(self):
+        """Test that config values are used when override=true."""
+        from omegaconf import OmegaConf
+
+        # Create dataset with wfs params
+        mock_ds = create_mock_dataset(
+            f0_values=[165e6, 165e6, 165e6],
+            f1_values=[215e6, 215e6, 215e6]
+        )
+
+        # Create config with override=true
+        conf = OmegaConf.create({
+            'radar': {
+                'f0': 100e6,
+                'f1': 300e6,
+                'override': True
+            },
+            'geometry': {'simplify': False},
+            'logging': {'verbose': False}
+        })
+
+        # Test
+        result = extract_item_metadata(dataset=mock_ds, conf=conf)
+
+        # Should use config values due to override
+        assert result['frequency'] == 200e6  # (100 + 300) / 2
+        assert result['bandwidth'] == 200e6  # |300 - 100|
+
+    def test_frequency_error_when_neither_source(self):
+        """Test that clear error is raised when both sources fail."""
+        from omegaconf import OmegaConf
+
+        # Create dataset without wfs params
+        mock_ds = create_mock_dataset(include_wfs=False)
+
+        # Create config without radar section
+        conf = OmegaConf.create({
+            'geometry': {'simplify': False},
+            'logging': {'verbose': False}
+        })
+
+        # Test - should raise ValueError
+        with pytest.raises(ValueError, match="Radar frequency parameters.*not found"):
+            extract_item_metadata(dataset=mock_ds, conf=conf)
+
+    def test_frequency_error_when_no_config(self):
+        """Test that error is raised when no config provided and extraction fails."""
+        # Create dataset without wfs params
+        mock_ds = create_mock_dataset(include_wfs=False)
+
+        # Test - should raise ValueError (no config provided)
+        with pytest.raises(ValueError, match="Radar frequency parameters.*not found"):
+            extract_item_metadata(dataset=mock_ds, conf=None)
+
+    def test_fallback_warning_only_when_verbose(self, caplog):
+        """Test that fallback warning is only logged when verbose=true."""
+        import logging
+        from omegaconf import OmegaConf
+
+        # Create dataset without wfs params
+        mock_ds = create_mock_dataset(include_wfs=False)
+
+        # Test with verbose=false - should not log warning
+        conf_quiet = OmegaConf.create({
+            'radar': {'f0': 150e6, 'f1': 200e6, 'override': False},
+            'geometry': {'simplify': False},
+            'logging': {'verbose': False}
+        })
+
+        with caplog.at_level(logging.WARNING):
+            caplog.clear()
+            extract_item_metadata(dataset=mock_ds, conf=conf_quiet)
+            assert "Using config fallback" not in caplog.text
+
+        # Test with verbose=true - should log warning
+        mock_ds2 = create_mock_dataset(include_wfs=False)
+        conf_verbose = OmegaConf.create({
+            'radar': {'f0': 150e6, 'f1': 200e6, 'override': False},
+            'geometry': {'simplify': False},
+            'logging': {'verbose': True}
+        })
+
+        with caplog.at_level(logging.WARNING):
+            caplog.clear()
+            extract_item_metadata(dataset=mock_ds2, conf=conf_verbose)
+            assert "Using config fallback" in caplog.text
+
+
+class TestSciMetadataFallback:
+    """Test sci metadata extraction fallback and override behavior."""
+
+    def test_sci_fallback_from_config(self):
+        """Test that config values are used when data lacks sci metadata."""
+        from omegaconf import OmegaConf
+
+        # Create dataset without doi/citation
+        mock_ds = create_mock_dataset(doi=None, funder_text=None)
+
+        # Create config with sci metadata fallback
+        conf = OmegaConf.create({
+            'sci': {
+                'doi': '10.1234/test.doi',
+                'citation': 'Test Citation Text',
+                'override': False
+            },
+            'geometry': {'simplify': False},
+            'logging': {'verbose': False}
+        })
+
+        # Test
+        result = extract_item_metadata(dataset=mock_ds, conf=conf)
+
+        # Should use config values
+        assert result['doi'] == '10.1234/test.doi'
+        assert result['citation'] == 'Test Citation Text'
+
+    def test_sci_extraction_preferred_over_config(self):
+        """Test that extraction takes precedence when override=false."""
+        from omegaconf import OmegaConf
+
+        # Create dataset with doi/citation
+        mock_ds = create_mock_dataset(
+            doi='10.5678/data.doi',
+            funder_text='Data Funder Text'
+        )
+
+        # Create config with different values
+        conf = OmegaConf.create({
+            'sci': {
+                'doi': '10.1234/config.doi',
+                'citation': 'Config Citation Text',
+                'override': False
+            },
+            'geometry': {'simplify': False},
+            'logging': {'verbose': False}
+        })
+
+        # Test
+        result = extract_item_metadata(dataset=mock_ds, conf=conf)
+
+        # Should use extracted values, not config
+        assert result['doi'] == '10.5678/data.doi'
+        assert result['citation'] == 'Data Funder Text'
+
+    def test_sci_config_override(self):
+        """Test that config values are used when override=true."""
+        from omegaconf import OmegaConf
+
+        # Create dataset with doi/citation
+        mock_ds = create_mock_dataset(
+            doi='10.5678/data.doi',
+            funder_text='Data Funder Text'
+        )
+
+        # Create config with override=true
+        conf = OmegaConf.create({
+            'sci': {
+                'doi': '10.1234/config.doi',
+                'citation': 'Config Citation Text',
+                'override': True
+            },
+            'geometry': {'simplify': False},
+            'logging': {'verbose': False}
+        })
+
+        # Test
+        result = extract_item_metadata(dataset=mock_ds, conf=conf)
+
+        # Should use config values due to override
+        assert result['doi'] == '10.1234/config.doi'
+        assert result['citation'] == 'Config Citation Text'
+
+    def test_sci_partial_fallback(self):
+        """Test that fallback works for individual fields."""
+        from omegaconf import OmegaConf
+
+        # Create dataset with only doi (no citation)
+        mock_ds = create_mock_dataset(
+            doi='10.5678/data.doi',
+            funder_text=None
+        )
+
+        # Create config with both values
+        conf = OmegaConf.create({
+            'sci': {
+                'doi': '10.1234/config.doi',
+                'citation': 'Config Citation Text',
+                'override': False
+            },
+            'geometry': {'simplify': False},
+            'logging': {'verbose': False}
+        })
+
+        # Test
+        result = extract_item_metadata(dataset=mock_ds, conf=conf)
+
+        # DOI should be from data, citation from config
+        assert result['doi'] == '10.5678/data.doi'
+        assert result['citation'] == 'Config Citation Text'
+
+    def test_sci_no_config_returns_none(self):
+        """Test that None is returned when no config and no data."""
+        from omegaconf import OmegaConf
+
+        # Create dataset without doi/citation
+        mock_ds = create_mock_dataset(doi=None, funder_text=None)
+
+        # Create config without sci section
+        conf = OmegaConf.create({
+            'geometry': {'simplify': False},
+            'logging': {'verbose': False}
+        })
+
+        # Test
+        result = extract_item_metadata(dataset=mock_ds, conf=conf)
+
+        # Should return None for both
+        assert result['doi'] is None
+        assert result['citation'] is None
+
+    def test_sci_fallback_warning_only_when_verbose(self, caplog):
+        """Test that fallback warning is only logged when verbose=true."""
+        import logging
+        from omegaconf import OmegaConf
+
+        # Create dataset without sci metadata
+        mock_ds = create_mock_dataset(doi=None, funder_text=None)
+
+        # Test with verbose=false - should not log warning
+        conf_quiet = OmegaConf.create({
+            'sci': {'doi': '10.1234/test', 'citation': 'Test', 'override': False},
+            'geometry': {'simplify': False},
+            'logging': {'verbose': False}
+        })
+
+        with caplog.at_level(logging.WARNING):
+            caplog.clear()
+            extract_item_metadata(dataset=mock_ds, conf=conf_quiet)
+            assert "Using config fallback for sci" not in caplog.text
+
+        # Test with verbose=true - should log warning
+        mock_ds2 = create_mock_dataset(doi=None, funder_text=None)
+        conf_verbose = OmegaConf.create({
+            'sci': {'doi': '10.1234/test', 'citation': 'Test', 'override': False},
+            'geometry': {'simplify': False},
+            'logging': {'verbose': True}
+        })
+
+        with caplog.at_level(logging.WARNING):
+            caplog.clear()
+            extract_item_metadata(dataset=mock_ds2, conf=conf_verbose)
+            assert "Using config fallback for sci" in caplog.text

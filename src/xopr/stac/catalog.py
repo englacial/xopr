@@ -192,7 +192,7 @@ def create_items_from_flight_data(
 
         try:
             # Extract metadata from MAT file only (no CSV needed)
-            metadata = extract_item_metadata(data_path)
+            metadata = extract_item_metadata(data_path, conf=config)
         except Exception as e:
             error_msg = f"Failed to extract metadata for {data_path}: {e}"
 

@@ -5,6 +5,7 @@ This module has been refactored to accept DictConfig objects directly,
 removing the need for multiple parameters.
 """
 
+import logging
 import re
 import warnings
 from pathlib import Path
@@ -149,28 +150,94 @@ def extract_item_metadata(
     bounds = shapely.bounds(line)
     boundingbox = box(bounds[0], bounds[1], bounds[2], bounds[3])
 
-    # Extract radar parameters
-    stable_wfs = extract_stable_wfs_params(find_radar_wfs_params(ds))
+    # Extract radar parameters with config fallback support
+    low_freq = None
+    high_freq = None
+    used_config_fallback = False
 
-    low_freq_array = stable_wfs['f0']
-    high_freq_array = stable_wfs['f1']
+    # Check if config provides radar frequency values
+    config_has_radar = (
+        conf is not None
+        and conf.get('radar', {}).get('f0') is not None
+        and conf.get('radar', {}).get('f1') is not None
+    )
+    config_override = conf is not None and conf.get('radar', {}).get('override', False)
 
-    unique_low_freq = np.unique(low_freq_array)
-    if len(unique_low_freq) != 1:
-        raise ValueError(f"Multiple low frequency values found: {unique_low_freq}")
-    low_freq = float(unique_low_freq[0])
+    if config_override and config_has_radar:
+        # Config override takes precedence
+        low_freq = float(conf.radar.f0)
+        high_freq = float(conf.radar.f1)
+    else:
+        # Try to extract from data first
+        try:
+            stable_wfs = extract_stable_wfs_params(find_radar_wfs_params(ds))
+            if 'f0' in stable_wfs and 'f1' in stable_wfs:
+                low_freq_array = stable_wfs['f0']
+                high_freq_array = stable_wfs['f1']
 
-    unique_high_freq = np.unique(high_freq_array)
-    if len(unique_high_freq) != 1:
-        raise ValueError(f"Multiple high frequency values found: {unique_high_freq}")
-    high_freq = float(unique_high_freq[0])
+                unique_low_freq = np.unique(low_freq_array)
+                if len(unique_low_freq) != 1:
+                    raise ValueError(f"Multiple low frequency values found: {unique_low_freq}")
+                low_freq = float(unique_low_freq[0])
+
+                unique_high_freq = np.unique(high_freq_array)
+                if len(unique_high_freq) != 1:
+                    raise ValueError(f"Multiple high frequency values found: {unique_high_freq}")
+                high_freq = float(unique_high_freq[0])
+        except KeyError:
+            pass  # Will try config fallback
+
+        # Config fallback if extraction failed
+        if (low_freq is None or high_freq is None) and config_has_radar:
+            low_freq = float(conf.radar.f0)
+            high_freq = float(conf.radar.f1)
+            used_config_fallback = True
+
+    # Error if neither source has values
+    if low_freq is None or high_freq is None:
+        raise ValueError(
+            "Radar frequency parameters (f0, f1) not found in data file "
+            "and not provided in config. Add radar.f0 and radar.f1 to your config."
+        )
+
+    # Log warning if using fallback (only when verbose)
+    if used_config_fallback and conf and conf.get('logging', {}).get('verbose', False):
+        logging.warning(f"Using config fallback for radar frequencies: f0={low_freq}, f1={high_freq}")
 
     bandwidth = float(np.abs(high_freq - low_freq))
     center_freq = float((low_freq + high_freq) / 2)
 
-    # Extract science metadata
-    doi = ds.attrs.get('doi', None)
-    cite = ds.attrs.get('funder_text', None)
+    # Extract science metadata with config fallback support
+    doi = None
+    cite = None
+    used_sci_fallback = False
+
+    # Check if config provides sci metadata values
+    config_has_sci = conf is not None and conf.get('sci') is not None
+    sci_override = config_has_sci and conf.get('sci', {}).get('override', False)
+
+    if sci_override and config_has_sci:
+        # Config override takes precedence
+        doi = conf.sci.get('doi')
+        cite = conf.sci.get('citation')
+    else:
+        # Try to extract from data first
+        doi = ds.attrs.get('doi', None)
+        cite = ds.attrs.get('funder_text', None)
+
+        # Config fallback if extraction returned None
+        if config_has_sci:
+            if doi is None and conf.sci.get('doi') is not None:
+                doi = conf.sci.doi
+                used_sci_fallback = True
+            if cite is None and conf.sci.get('citation') is not None:
+                cite = conf.sci.citation
+                used_sci_fallback = True
+
+    # Log warning if using fallback (only when verbose)
+    if used_sci_fallback and conf and conf.get('logging', {}).get('verbose', False):
+        logging.warning(f"Using config fallback for sci metadata: doi={doi}, citation={cite}")
+
     mime = ds.attrs['mimetype']
 
     if should_close_dataset:
@@ -254,7 +321,7 @@ def find_radar_wfs_params(ds):
     for get_params in search_paths:
         try:
             return get_params()
-        except (KeyError, AttributeError):
+        except (KeyError, AttributeError, TypeError):
             continue
 
     available = [attr for attr in dir(ds) if 'param' in attr.lower()]

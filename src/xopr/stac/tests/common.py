@@ -10,7 +10,7 @@ from shapely.geometry import LineString, box
 
 
 def create_mock_dataset(doi=None, ror=None, funder_text=None,
-                       f0_values=None, f1_values=None):
+                       f0_values=None, f1_values=None, include_wfs=True):
     """Create a mock xarray dataset for testing.
 
     Parameters
@@ -25,6 +25,9 @@ def create_mock_dataset(doi=None, ror=None, funder_text=None,
         Low frequency values, by default [165e6, 165e6, 165e6]
     f1_values : array-like, optional
         High frequency values, by default [215e6, 215e6, 215e6]
+    include_wfs : bool, optional
+        If True (default), include WFS radar params. If False, simulate
+        old files without frequency metadata.
 
     Returns
     -------
@@ -68,15 +71,19 @@ def create_mock_dataset(doi=None, ror=None, funder_text=None,
 
     mock_ds.__getitem__ = Mock(side_effect=getitem_side_effect)
 
-    # Mock param_records
-    mock_ds.param_records = {
-        'radar': {
-            'wfs': {
-                'f0': np.array(f0_values or [165e6, 165e6, 165e6]),
-                'f1': np.array(f1_values or [215e6, 215e6, 215e6])
+    # Mock param_records - simulate missing wfs if include_wfs=False
+    if include_wfs:
+        mock_ds.param_records = {
+            'radar': {
+                'wfs': {
+                    'f0': np.array(f0_values or [165e6, 165e6, 165e6]),
+                    'f1': np.array(f1_values or [215e6, 215e6, 215e6])
+                }
             }
         }
-    }
+    else:
+        # Simulate old files without wfs params - accessing 'radar' or 'wfs' raises KeyError
+        mock_ds.param_records = {}
 
     # Mock close method
     mock_ds.close = Mock()
