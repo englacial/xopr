@@ -23,11 +23,18 @@ jobs:
       pull-requests: read
 
     steps:
+    - name: Generate App Token
+      id: app-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ vars.RELEASE_APP_ID }}
+        private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+        token: ${{ steps.app-token.outputs.token }}
 
     - name: Set up Python
       uses: actions/setup-python@v5
