@@ -1,9 +1,15 @@
 import time
+import warnings
 
 import pytest
 
 import xopr
 import xopr.geometry
+
+# Configuration flag for OPS database failure handling in tests.
+# Set to 'warn' to fall back to file-based layers with a warning when db is unavailable.
+# Set to 'error' to fail tests if db is unavailable (strict mode).
+OPS_DB_FAILURE_MODE = 'warn'  # Options: 'warn', 'error'
 
 
 def test_get_collections():
@@ -80,16 +86,26 @@ def test_load_season(collection, segment_path):
     # Test loading layers
     db_layers_loaded = False
     file_layers_loaded = False
+    db_error = None
 
     print("Loading layers from db...")
     try:
         layers = opr.get_layers(flight, source='db')
         assert len(layers) > 1, "Expected layers to be loaded from database"
         db_layers_loaded = True
-    except ValueError as e:
-        pass
+    except (ValueError, TimeoutError, ConnectionError, OSError) as e:
+        db_error = e
+        if OPS_DB_FAILURE_MODE == 'error':
+            raise
+        # In 'warn' mode, continue to try file-based layers
 
     if not db_layers_loaded:
+        if db_error is not None:
+            warnings.warn(
+                f"OPS database unavailable ({type(db_error).__name__}: {db_error}), "
+                "falling back to file-based layers",
+                UserWarning
+            )
         print("Loading layers from file...")
         layers = opr.get_layers(flight, source='files')
         print(layers)
