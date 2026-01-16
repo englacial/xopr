@@ -147,7 +147,7 @@ def _ops_api_request(path, data, request_type='POST', headers=None, base_url=ops
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
             'Authorization': f'Basic {credentials}',
-            'Cookie': 'userName=anonymous; isAuthenticated=0'
+            'Cookie': 'userName=anonymous; isAuthenticated=Yes'
         }
 
     try:
