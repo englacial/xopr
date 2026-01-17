@@ -629,7 +629,6 @@ class OPRConnection:
             if layer_group == '[]':
                 layer_group = ''
             layer_display_name = f"{layer_group}:{layer_name}"
-            layer_data = {}
 
             layer_ds = layers_segment.sel(layer=layer_id).drop_vars('layer')
             layers[layer_display_name] = layer_ds
