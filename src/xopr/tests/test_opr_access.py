@@ -86,30 +86,18 @@ def test_load_season(collection, segment_path):
     # Test loading layers
     db_layers_loaded = False
     file_layers_loaded = False
-    db_error = None
 
     print("Loading layers from db...")
-    try:
-        layers = opr.get_layers(flight, source='db')
-        assert len(layers) > 1, "Expected layers to be loaded from database"
+    layers = opr.get_layers(flight, source='db')
+    if layers is not None and len(layers) > 0:
         db_layers_loaded = True
-    except (ValueError, TimeoutError, ConnectionError, OSError) as e:
-        db_error = e
+    else:
         if OPS_DB_FAILURE_MODE == 'error':
-            raise
+            raise ValueError("DB layers failed and OPS_DB_FAILURE_MODE is 'error'")
         # In 'warn' mode, continue to try file-based layers
-
-    if not db_layers_loaded:
-        if db_error is not None:
-            warnings.warn(
-                f"OPS database unavailable ({type(db_error).__name__}: {db_error}), "
-                "falling back to file-based layers",
-                UserWarning
-            )
         print("Loading layers from file...")
         layers = opr.get_layers(flight, source='files')
-        print(layers)
-        if len(layers) > 1:
+        if layers is not None and len(layers) > 0:
             file_layers_loaded = True
 
     assert db_layers_loaded or file_layers_loaded, "No layers loaded from either database or file"

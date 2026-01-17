@@ -855,7 +855,7 @@ class OPRConnection:
 
         return layers
 
-    def get_layers(self, ds : xr.Dataset, source: str = 'auto', include_geometry=True, raise_errors=True) -> dict:
+    def get_layers(self, ds : xr.Dataset, source: str = 'auto', include_geometry=True, errors='warn') -> dict:
         """
         Fetch layer data for a given flight dataset, either from CSARP_layer files or the OPS Database API.
 
@@ -866,15 +866,18 @@ class OPRConnection:
         source : str, optional
             The source to fetch layers from: 'auto', 'files', or 'db' (default is 'auto').
         include_geometry : bool, optional
-            If True, include geometry information when fetching from the API.\
-        raise_errors : bool, optional
-            If True, raise errors when layers cannot be found.
+            If True, include geometry information when fetching from the API.
+        errors : str, optional
+            How to handle missing layer data: 'warn' (default) returns None with a warning,
+            'error' raises an exception.
 
         Returns
         -------
-        dict
-            A dictionary mapping layer IDs to their corresponding data.
+        dict or None
+            A dictionary mapping layer IDs to their corresponding data, or None if no layers
+            found and errors='warn'.
         """
+        collection, segment_path, _ = self._extract_segment_info(ds)
 
         if source == 'auto':
             # Try to get layers from files first
@@ -883,10 +886,31 @@ class OPRConnection:
                 return layers
             except:
                 # Fallback to API if no layers found in files
-                return self.get_layers_db(ds, include_geometry=include_geometry, raise_errors=raise_errors)
+                try:
+                    return self.get_layers_db(ds, include_geometry=include_geometry, raise_errors=True)
+                except Exception as e:
+                    if errors == 'error':
+                        raise
+                    else:
+                        warnings.warn(f"No layer data found for {collection}/{segment_path}: {e}")
+                        return None
         elif source == 'files':
-            return self.get_layers_files(ds, raise_errors=raise_errors)
+            try:
+                return self.get_layers_files(ds, raise_errors=True)
+            except Exception as e:
+                if errors == 'error':
+                    raise
+                else:
+                    warnings.warn(f"No layer files found for {collection}/{segment_path}: {e}")
+                    return None
         elif source == 'db':
-            return self.get_layers_db(ds, include_geometry=include_geometry, raise_errors=raise_errors)
+            try:
+                return self.get_layers_db(ds, include_geometry=include_geometry, raise_errors=True)
+            except Exception as e:
+                if errors == 'error':
+                    raise
+                else:
+                    warnings.warn(f"No layer data in DB for {collection}/{segment_path}: {e}")
+                    return None
         else:
             raise ValueError("Invalid source specified. Must be one of: 'auto', 'files', 'db'.")
