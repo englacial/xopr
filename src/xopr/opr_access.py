@@ -631,7 +631,7 @@ class OPRConnection:
             layer_display_name = f"{layer_group}:{layer_name}"
             layer_data = {}
 
-            layer_ds = layers_segment.sel(layer=layer_id)
+            layer_ds = layers_segment.sel(layer=layer_id).drop_vars('layer')
             layers[layer_display_name] = layer_ds
 
         return layers
