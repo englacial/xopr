@@ -135,7 +135,7 @@ def check_gcs_auth() -> bool:
         print("ERROR: Not authenticated to Google Cloud Storage")
         print(f"Error details: {stderr}")
         print("\nTo fix this, either:")
-        print("1. Set service account: export GOOGLE_APPLICATION_CREDENTIALS='$HOME/opr-stac-key.json'")
+        print('1. Set service account: export GOOGLE_APPLICATION_CREDENTIALS="$HOME/opr-stac-key.json"')
         print("2. Or use gcloud: gcloud auth application-default login")
 
         # Check if the environment variable is set

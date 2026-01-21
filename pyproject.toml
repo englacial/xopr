@@ -24,11 +24,12 @@ dependencies = [
     "dask[distributed]",
     "rustac>=0.6.0",
     "antimeridian>=0.4.3",
-    "hdf5storage",
+    "hdf5storage>=0.2.2",  # Requires Sept 2025 release with pkg_resources fix
     "duckdb>=1.0.0",
     "haversine>=2.8.0",
     "pyarrow",
     "platformdirs",
+    "pyOpenSSL<24",  # gsutil incompatible with pyOpenSSL 24+ (removed crypto.sign)
 ]
 
 [project.optional-dependencies]
