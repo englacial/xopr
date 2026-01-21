@@ -536,7 +536,7 @@ class OPRConnection:
 
         return segment_list
 
-    def get_layers_files(self, segment: Union[xr.Dataset, dict], raise_errors=True) -> dict:
+    def _get_layers_files(self, segment: Union[xr.Dataset, dict], raise_errors=True) -> dict:
         """
         Fetch layers from the CSARP_layers files
 
@@ -778,7 +778,7 @@ class OPRConnection:
 
         return ds
 
-    def get_layers_db(self, flight: Union[xr.Dataset, dict], include_geometry=True, raise_errors=True) -> dict:
+    def _get_layers_db(self, flight: Union[xr.Dataset, dict], include_geometry=True, raise_errors=True) -> dict:
         """
         Fetch layer data from the OPS API
 
@@ -882,12 +882,12 @@ class OPRConnection:
         if source == 'auto':
             # Try to get layers from files first
             try:
-                layers = self.get_layers_files(ds, raise_errors=True)
+                layers = self._get_layers_files(ds, raise_errors=True)
                 return layers
             except:
                 # Fallback to API if no layers found in files
                 try:
-                    return self.get_layers_db(ds, include_geometry=include_geometry, raise_errors=True)
+                    return self._get_layers_db(ds, include_geometry=include_geometry, raise_errors=True)
                 except Exception as e:
                     if errors == 'error':
                         raise
@@ -896,7 +896,7 @@ class OPRConnection:
                         return None
         elif source == 'files':
             try:
-                return self.get_layers_files(ds, raise_errors=True)
+                return self._get_layers_files(ds, raise_errors=True)
             except Exception as e:
                 if errors == 'error':
                     raise
@@ -905,7 +905,7 @@ class OPRConnection:
                     return None
         elif source == 'db':
             try:
-                return self.get_layers_db(ds, include_geometry=include_geometry, raise_errors=True)
+                return self._get_layers_db(ds, include_geometry=include_geometry, raise_errors=True)
             except Exception as e:
                 if errors == 'error':
                     raise
