@@ -5,7 +5,7 @@
 1. xOPR is first and foremost a data access tool. It should be simple to find and retrieve data for both human-centered and automated workflows.
 2. xOPR is not a radar processing tool. It is reasonable to include simple analysis tools when they are common, well-defined, and widely useful, but most interesting analysis workflows will require code outside of the core xOPR.
 3. xOPR is a part of the broader OPR project and, as such, should use the OPR data product types as directly as possible. It is reasonable for xOPR to transform data as needed to smooth over data format transitions or to translate appropriately from Matlab to Python, but the core data products should not be changed.
-    - See [ORP Toolbox File Guides](https://gitlab.com/openpolarradar/opr/-/wikis/OPR-Toolbox-Guide#file-guides)
+    - See [OPR Toolbox File Guides](https://gitlab.com/openpolarradar/opr/-/wikis/OPR-Toolbox-Guide#file-guides)
 4. In line with Xarray advice, xOPR does not subclass any Xarray datatypes but rather operators on native Xarray datatypes.
 5. To enable reproducible workflows, xopr should pair metadata and data so that they travel together. (i.e., either as sidecar files or appends to the cached on disk format) 
 
