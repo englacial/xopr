@@ -32,16 +32,27 @@ from pyproj import Transformer
 
 def get_antarctic_regions(
     name=None,
-    regions=None,
-    subregions=None,
+    region=None,
+    subregion=None,
     type=None,
     merge_regions=True,
-    measures_boundaries_url = "https://storage.googleapis.com/opr_stac/reference_geometry/measures_boundaries_4326.geojson",
     merge_in_projection="EPSG:3031",
-    simplify_tolerance=None
+    simplify_tolerance=None,
+    regions=None, # Deprecated alias for "region"
+    subregions=None # Deprecated alias for "subregion"
 ):
     """
     Load and filter Antarctic regional boundaries from the MEASURES dataset.
+
+    The data product is derived from:
+
+    > Maps of Antarctic ice shelves, the Antarctic coastline and Antarctic basins. The maps are assembled from 2008-2009 ice-front data from ALOS PALSAR and ENVISAT ASAR data acquired during International Polar Year, 2007-2009 (IPY), the InSAR-based grounding line data (MEaSUREs Antarctic Grounding Line from Differential Satellite Radar Interferometry), augmented with other grounding line sources, the Antarctic ice velocity map (MEaSUREs InSAR-Based Antarctica Ice Velocity Map), and the Bedmap-2 DEM.
+    > 
+    > This data set is part of the NASA Making Earth System Data Records for Use in Research Environments (MEaSUREs) program.
+    > 
+    > Mouginot, J., B. Scheuchl, and E. Rignot. 2017. MEaSUREs Antarctic Boundaries for IPY 2007-2009 from Satellite Radar, Version 2. [Indicate subset used]. Boulder, Colorado USA. NASA National Snow and Ice Data Center Distributed Active Archive Center. doi: http://dx.doi.org/10.5067/AXE4121732AD. [Date Accessed].
+    > 
+    > https://nsidc.org/data/nsidc-0709/versions/2
 
     See these two notebooks for examples of how to use this function:
     - https://docs.englacial.org/xopr/search-and-scaling/
@@ -51,9 +62,9 @@ def get_antarctic_regions(
     ----------
     name : str or list, optional
         NAME field value(s) to filter by
-    regions : str or list, optional
-        REGIONS field value(s) to filter by
-    subregions : str or list, optional
+    region : str or list, optional
+        REGION field value(s) to filter by
+    subregion : str or list, optional
         SUBREGION field value(s) to filter by
     type : str or list, optional
         TYPE field value(s) to filter by
@@ -80,9 +91,116 @@ def get_antarctic_regions(
     >>> regions = get_antarctic_regions(name=["George_VI", "LarsenC"])
     """
 
+    if regions is not None:
+        print("Warning: 'regions' parameter is deprecated; use 'region' instead.")
+        if region is not None:
+            raise ValueError("Cannot use both 'regions' and 'region' parameters.")
+        region = regions
+    if subregions is not None:
+        print("Warning: 'subregions' parameter is deprecated; use 'subregion' instead.")
+        if subregion is not None:
+            raise ValueError("Cannot use both 'subregions' and 'subregion' parameters.")
+        subregion = subregions
 
+    return _get_regions(
+        name=name,
+        region=region,
+        subregion=subregion,
+        type=type,
+        merge_regions=merge_regions,
+        regions_geojson_url="https://storage.googleapis.com/opr_stac/reference_geometry/measures_boundaries_4326.geojson",
+        merge_in_projection=merge_in_projection,
+        simplify_tolerance=simplify_tolerance
+    )
+
+def get_greenland_regions(
+    name=None,
+    region=None,
+    subregion=None,
+    type=None,
+    merge_regions=True,
+    merge_in_projection="EPSG:3413",
+    simplify_tolerance=None,
+):
+    """
+    Load and filter Greenland regional boundaries
+
+    The data product is derived from:
+
+    > We divide Greenland, including its peripheral glaciers and ice caps, into 260 basins grouped in seven regions:  southwest (SW), central west (CW), (iii) northwest (NW), north (NO), northeast (NE), central east (CE), and southeast (SE). These regions are selected based on ice flow regimes, climate, and the need to partition the ice sheet into zones comparable in size (200,000 km2 to 400,000 km2) and ice production (50 Gt/y to 100 Gt/y, or billion tons per year). Out of the 260 surveyed glaciers, 217 are marine-terminating, i.e., calving into icebergs and melting in contact with ocean waters, and 43 are land-terminating.The actual number of land-terminating glaciers is far larger than 43, but we lump them into larger units for simplification.
+    >
+    > Each glacier catchment is defined using a combination of ice flow direction and surface slope. In areas of fast flow (> 100 m), we use a composite velocity mosaic (Mouginot et al. 2017). In slowmoving areas, we use surface slope using the GIMP DEM (https://nsidc.org/data/nsidc- 0715/versions/1) (Howat et al. 2014) smoothed over 10 ice thicknesses to remove shortwavelength undulations.
+    > 
+    > References:
+    > 
+    > Mouginot J, Rignot E, Scheuchl B, Millan R (2017) Comprehensive annual ice sheet velocity mapping using landsat-8, sentinel-1, and radarsat-2 data. Remote Sensing 9(4).
+    > 
+    > Howat IM, Negrete A, Smith BE (2014) The greenland ice mapping project (gimp) land classification and surface elevation data sets. The Cryosphere 8(4):1509–1518.
+    >
+    > https://datadryad.org/dataset/doi:10.7280/D1WT11
+
+    Parameters
+    ----------
+    name : str or list, optional
+        NAME field value(s) to filter by
+    region : str or list, optional
+        REGION field value(s) to filter by
+    subregion : str or list, optional
+        SUBREGION field value(s) to filter by
+    type : str or list, optional
+        TYPE field value(s) to filter by
+    merge_regions : bool, default True
+        If True, return a single merged geometry; if False, return list of geometries
+    measures_boundaries_url : str, default "https://storage.googleapis.com/opr_stac/reference_geometry/measures_boundaries_4326.geojson"
+        URL to the GeoJSON file containing Antarctic region boundaries
+
+    Returns
+    -------
+    list or dict
+        If merge_regions=False: List of GeoJSON geometry dicts
+        If merge_regions=True: Single GeoJSON geometry dict of merged regions
+    """
+
+    greenland_boundaries_url = "https://storage.googleapis.com/opr_stac/reference_geometry/greenland_boundaries_4326.geojson"
+
+    return _get_regions(
+        name=name,
+        region=region,
+        subregion=subregion,
+        type=type,
+        merge_regions=merge_regions,
+        regions_geojson_url=greenland_boundaries_url,
+        merge_in_projection=merge_in_projection,
+        simplify_tolerance=simplify_tolerance
+    )
+
+
+def _get_regions(
+    name=None,
+    region=None,
+    subregion=None,
+    type=None,
+    merge_regions=True,
+    regions_geojson_url = "https://storage.googleapis.com/opr_stac/reference_geometry/measures_boundaries_4326.geojson",
+    merge_in_projection="EPSG:3031",
+    simplify_tolerance=None
+):
     # Load the boundaries GeoJSON from the reference URL
-    filtered = gpd.read_file(measures_boundaries_url)
+    filtered = gpd.read_file(regions_geojson_url)
+
+    standard_columns = {
+        'NAME': ['NAME', 'NAMES'],
+        'REGION': ['REGION', 'Regions'],
+        'SUBREGION': ['SUBREGION', 'Subregions'],
+        'TYPE': ['TYPE', 'TYPES']
+    }
+
+    # Standardize column names
+    for standard_name, possible_names in standard_columns.items():
+        for col in possible_names:
+            if col in filtered.columns:
+                filtered = filtered.rename(columns={col: standard_name})
+                break
 
     # Apply filters based on provided parameters
     if name is not None:
@@ -90,15 +208,15 @@ def get_antarctic_regions(
             name = [name]
         filtered = filtered[filtered['NAME'].isin(name)]
 
-    if regions is not None:
-        if isinstance(regions, str):
-            regions = [regions]
-        filtered = filtered[filtered['Regions'].isin(regions)]
+    if region is not None:
+        if isinstance(region, str):
+            region = [region]
+        filtered = filtered[filtered['REGION'].isin(region)]
 
-    if subregions is not None:
-        if isinstance(subregions, str):
-            subregions = [subregions]
-        filtered = filtered[filtered['Subregions'].isin(subregions)]
+    if subregion is not None:
+        if isinstance(subregion, str):
+            subregion = [subregion]
+        filtered = filtered[filtered['SUBREGION'].isin(subregion)]
 
     if type is not None:
         if isinstance(type, str):
@@ -124,7 +242,7 @@ def get_antarctic_regions(
 
         merged = shapely.ops.unary_union(filtered.geometry)  # geopandas < 1.0 compat
 
-        if simplify_tolerance is None and (merge_in_projection == "EPSG:3031"): # Set a reasonable default based on the size
+        if simplify_tolerance is None and (merge_in_projection is not None): # Set a reasonable default based on the size
             area_km2 = merged.area / 1e6
             if area_km2 < 10000:
                 simplify_tolerance = 0
@@ -189,7 +307,7 @@ def project_dataset(ds, target_crs):
     })
     return ds
 
-def project_geojson(geometry, source_crs="EPSG:4326", target_crs="EPSG:3031"):
+def project_geojson(geometry, source_crs="EPSG:4326", target_crs=None):
     """
     Project a geometry from one coordinate reference system to another.
 
@@ -203,8 +321,11 @@ def project_geojson(geometry, source_crs="EPSG:4326", target_crs="EPSG:3031"):
         Input geometry to be projected
     source_crs : str, default "EPSG:4326"
         Source coordinate reference system (default is WGS84)
-    target_crs : str, default "EPSG:3031"
-        Target coordinate reference system (default is Antarctic Polar Stereographic)
+    target_crs : str, default None
+        Target coordinate reference system. If None, automatically selects
+        Antarctic Polar Stereographic (EPSG:3031) for southern hemisphere
+        and Arctic Polar Stereographic (EPSG:3413) for northern hemisphere based on
+        the geometry's centroid latitude.
 
     Returns
     -------
@@ -217,6 +338,13 @@ def project_geojson(geometry, source_crs="EPSG:4326", target_crs="EPSG:3031"):
     >>> point = Point(-70, -75)  # lon, lat in WGS84
     >>> projected = project_geojson(point, "EPSG:4326", "EPSG:3031")
     """
+
+    if target_crs is None:
+        if geometry.centroid.y < 0:
+            target_crs = "EPSG:3031"  # Antarctic Polar Stereographic
+        else:
+            target_crs = "EPSG:3413"  # Arctic Polar Stereographic
+
     transformer = Transformer.from_crs(source_crs, target_crs, always_xy=True)
     projected_geometry = shapely.ops.transform(transformer.transform, geometry)
     return projected_geometry
