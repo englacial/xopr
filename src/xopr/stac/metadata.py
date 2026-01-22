@@ -271,7 +271,7 @@ def discover_campaigns(data_root: Union[str, Path], conf: Optional[DictConfig] =
     List[Dict[str, str]]
         List of campaign metadata dictionaries
     """
-    campaign_pattern = re.compile(r'^(\d{4})_([^_]+)_([^_]+)$')
+    campaign_pattern = re.compile(r'^(\d{4})_([^_]+)_(.+)$')
     campaigns = []
 
     data_root = Path(data_root)
