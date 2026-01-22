@@ -114,7 +114,6 @@ def estimate_vertical_distances(ds: xr.Dataset, epsilon_ice: float = 3.15) -> xr
 
 
 def interpolate_to_vertical_grid(ds: xr.Dataset,
-def interpolate_to_vertical_grid(ds: xr.Dataset,
                                   vertical_coordinate: str = 'range',
                                   vert_min: float = None,
                                   vert_max: float = None,
