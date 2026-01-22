@@ -48,10 +48,9 @@ xopr.radar_util : Processing functions for radar data and layers
 ops_api : Interface to the OPS database API
 """
 
-from typing import Iterable, Optional, Union
+from typing import Union
 import re
 import warnings
-from typing import Union
 
 import antimeridian
 import fsspec

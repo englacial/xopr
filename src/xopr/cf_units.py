@@ -20,7 +20,6 @@ This is a work in progress and the data structures are definitely not fully CF-c
 Not intended for external use.
 """
 
-import xarray as xr
 import numpy as np
 
 

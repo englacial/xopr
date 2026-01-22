@@ -46,7 +46,7 @@ def get_antarctic_regions(
     See these two notebooks for examples of how to use this function:
     - https://docs.englacial.org/xopr/search-and-scaling/
     - https://docs.englacial.org/xopr/crossovers/
-    
+
     Parameters
     ----------
     name : str or list, optional
