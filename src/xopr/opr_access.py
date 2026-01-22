@@ -631,7 +631,9 @@ class OPRConnection:
             layer_display_name = f"{layer_group}:{layer_name}"
 
             layer_ds = layers_segment.sel(layer=layer_id).drop_vars('layer')
-            layers[layer_display_name] = layer_ds
+            # Only add non-empty layers
+            if layer_ds.sizes.get('slow_time', 0) > 0:
+                layers[layer_display_name] = layer_ds
 
         return layers
 
@@ -851,7 +853,9 @@ class OPRConnection:
             # Filter to the same time range as flight
             l = self._trim_to_bounds(l, flight)
 
-            layers[layer_name] = l
+            # Only add non-empty layers
+            if l.sizes.get('slow_time', 0) > 0:
+                layers[layer_name] = l
 
         return layers
 
