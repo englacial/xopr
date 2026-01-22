@@ -7,7 +7,6 @@ coordinate conversions between two-way travel time (TWTT), range, and elevation.
 
 """
 
-import xarray as xr
 import numpy as np
 import scipy.constants
 import xarray as xr
@@ -115,8 +114,6 @@ def estimate_vertical_distances(ds: xr.Dataset, epsilon_ice: float = 3.15) -> xr
 
 def interpolate_to_vertical_grid(ds: xr.Dataset,
                                   vertical_coordinate: str = 'range',
-                                  vert_min: float = None,
-                                  vert_max: float = None,
                                   vert_min: float = None,
                                   vert_max: float = None,
                                   vert_spacing: float = 10.0,
