@@ -922,7 +922,7 @@ class OPRConnection:
 
         return layers
 
-    def get_layers(self, ds : xr.Dataset, source: str = 'auto', include_geometry=True, errors='warn') -> dict:
+    def get_layers(self, ds : Union[xr.Dataset, dict], source: str = 'auto', include_geometry=True, errors='warn') -> dict:
         """
         Load layer picks from files or database.
 
@@ -930,8 +930,8 @@ class OPRConnection:
 
         Parameters
         ----------
-        ds : xr.Dataset
-            Radar frame Dataset.
+        ds : Union[xr.Dataset, dict]
+            Radar frame Dataset or STAC item.
         source : {'auto', 'files', 'db'}, optional
             Source for layers. 'auto' tries files then falls back to database.
         include_geometry : bool, optional
