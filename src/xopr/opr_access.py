@@ -631,9 +631,10 @@ class OPRConnection:
             layer_display_name = f"{layer_group}:{layer_name}"
 
             layer_ds = layers_segment.sel(layer=layer_id).drop_vars('layer')
-            # Only add non-empty layers
+            # Only add non-empty layers with at least some non-NaN data
             if layer_ds.sizes.get('slow_time', 0) > 0:
-                layers[layer_display_name] = layer_ds
+                if not layer_ds.to_array().isnull().all():
+                    layers[layer_display_name] = layer_ds
 
         return layers
 
@@ -853,9 +854,10 @@ class OPRConnection:
             # Filter to the same time range as flight
             l = self._trim_to_bounds(l, flight)
 
-            # Only add non-empty layers
+            # Only add non-empty layers with at least some non-NaN data
             if l.sizes.get('slow_time', 0) > 0:
-                layers[layer_name] = l
+                if not l.to_array().isnull().all():
+                    layers[layer_name] = l
 
         return layers
 
