@@ -842,22 +842,22 @@ class OPRConnection:
         for layer_id in layer_ids:
             layer_name = self.db_layers_metadata.loc[self.db_layers_metadata['lyr_id'] == layer_id, 'display_name'].values[0]
 
-            l = layer_ds_raw.where(layer_ds_raw['lyr_id'] == layer_id, drop=True)
+            layer_ds = layer_ds_raw.where(layer_ds_raw['lyr_id'] == layer_id, drop=True)
 
-            l = l.sortby('gps_time')
+            layer_ds = layer_ds.sortby('gps_time')
 
-            l = l.rename({'gps_time': 'slow_time'})
-            l = l.set_coords(['slow_time'])
+            layer_ds = layer_ds.rename({'gps_time': 'slow_time'})
+            layer_ds = layer_ds.set_coords(['slow_time'])
 
-            l['slow_time'] = pd.to_datetime(l['slow_time'].values, unit='s')
+            layer_ds['slow_time'] = pd.to_datetime(layer_ds['slow_time'].values, unit='s')
 
             # Filter to the same time range as flight
-            l = self._trim_to_bounds(l, flight)
+            layer_ds = self._trim_to_bounds(layer_ds, flight)
 
             # Only add non-empty layers with at least some non-NaN data
-            if l.sizes.get('slow_time', 0) > 0:
-                if not l.to_array().isnull().all():
-                    layers[layer_name] = l
+            if layer_ds.sizes.get('slow_time', 0) > 0:
+                if not layer_ds.to_array().isnull().all():
+                    layers[layer_name] = layer_ds
 
         return layers
 
@@ -890,7 +890,7 @@ class OPRConnection:
             try:
                 layers = self._get_layers_files(ds, raise_errors=True)
                 return layers
-            except:
+            except Exception:
                 # Fallback to API if no layers found in files
                 try:
                     return self._get_layers_db(ds, include_geometry=include_geometry, raise_errors=True)
