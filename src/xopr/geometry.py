@@ -193,7 +193,7 @@ def _get_regions(
         'NAME': ['NAME', 'NAMES'],
         'REGION': ['REGION', 'Regions'],
         'SUBREGION': ['SUBREGION', 'Subregions'],
-        'TYPE': ['TYPE', 'TYPES']
+        'TYPE': ['TYPE', 'TYPES', 'GL_TYPE']
     }
 
     # Standardize column names
