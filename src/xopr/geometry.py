@@ -15,6 +15,7 @@ provides tools for merging and simplifying regional boundaries.
 Functions
 ---------
 get_antarctic_regions : Load and filter Antarctic regional boundaries
+get_greenland_regions : Load and filter Greenland regional boundaries
 project_dataset : Project dataset coordinates to a target CRS
 project_geojson : Reproject geometries between coordinate systems
 
@@ -47,17 +48,17 @@ def get_antarctic_regions(
     The data product is derived from:
 
     > Maps of Antarctic ice shelves, the Antarctic coastline and Antarctic basins. The maps are assembled from 2008-2009 ice-front data from ALOS PALSAR and ENVISAT ASAR data acquired during International Polar Year, 2007-2009 (IPY), the InSAR-based grounding line data (MEaSUREs Antarctic Grounding Line from Differential Satellite Radar Interferometry), augmented with other grounding line sources, the Antarctic ice velocity map (MEaSUREs InSAR-Based Antarctica Ice Velocity Map), and the Bedmap-2 DEM.
-    > 
+    >
     > This data set is part of the NASA Making Earth System Data Records for Use in Research Environments (MEaSUREs) program.
-    > 
+    >
     > Mouginot, J., B. Scheuchl, and E. Rignot. 2017. MEaSUREs Antarctic Boundaries for IPY 2007-2009 from Satellite Radar, Version 2. [Indicate subset used]. Boulder, Colorado USA. NASA National Snow and Ice Data Center Distributed Active Archive Center. doi: http://dx.doi.org/10.5067/AXE4121732AD. [Date Accessed].
-    > 
+    >
     > https://nsidc.org/data/nsidc-0709/versions/2
 
     See these two notebooks for examples of how to use this function:
     - https://docs.englacial.org/xopr/search-and-scaling/
     - https://docs.englacial.org/xopr/crossovers/
-    
+
     Parameters
     ----------
     name : str or list, optional
@@ -130,11 +131,11 @@ def get_greenland_regions(
     > We divide Greenland, including its peripheral glaciers and ice caps, into 260 basins grouped in seven regions:  southwest (SW), central west (CW), (iii) northwest (NW), north (NO), northeast (NE), central east (CE), and southeast (SE). These regions are selected based on ice flow regimes, climate, and the need to partition the ice sheet into zones comparable in size (200,000 km2 to 400,000 km2) and ice production (50 Gt/y to 100 Gt/y, or billion tons per year). Out of the 260 surveyed glaciers, 217 are marine-terminating, i.e., calving into icebergs and melting in contact with ocean waters, and 43 are land-terminating.The actual number of land-terminating glaciers is far larger than 43, but we lump them into larger units for simplification.
     >
     > Each glacier catchment is defined using a combination of ice flow direction and surface slope. In areas of fast flow (> 100 m), we use a composite velocity mosaic (Mouginot et al. 2017). In slowmoving areas, we use surface slope using the GIMP DEM (https://nsidc.org/data/nsidc- 0715/versions/1) (Howat et al. 2014) smoothed over 10 ice thicknesses to remove shortwavelength undulations.
-    > 
+    >
     > References:
-    > 
+    >
     > Mouginot J, Rignot E, Scheuchl B, Millan R (2017) Comprehensive annual ice sheet velocity mapping using landsat-8, sentinel-1, and radarsat-2 data. Remote Sensing 9(4).
-    > 
+    >
     > Howat IM, Negrete A, Smith BE (2014) The greenland ice mapping project (gimp) land classification and surface elevation data sets. The Cryosphere 8(4):1509–1518.
     >
     > https://datadryad.org/dataset/doi:10.7280/D1WT11
