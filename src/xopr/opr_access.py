@@ -121,7 +121,7 @@ class OPRConnection:
                     segment['properties'].get('opr:frame'))
 
     def query_frames(self, collections: list[str] = None, segment_paths: list[str] = None,
-                     geometry = None, date_range: tuple = None, properties: dict = {},
+                     geometry = None, date_range: str = None, properties: dict = {},
                      max_items: int = None, exclude_geometry: bool = False,
                      search_kwargs: dict = {}) -> gpd.GeoDataFrame:
         """
@@ -132,6 +132,7 @@ class OPRConnection:
 
         Parameters
         ----------
+
         collections : list[str] or str, optional
             Collection name(s) (e.g., "2022_Antarctica_BaslerMKB").
         segment_paths : list[str] or str, optional
@@ -140,6 +141,19 @@ class OPRConnection:
             Geospatial geometry to filter by intersection.
         date_range : str, optional
             Date range in ISO format (e.g., "2021-01-01/2025-06-01").
+
+        collections : list[str], optional
+            List of collection names to filter by (e.g., "2022_Antarctica_BaslerMKB").
+        segment_paths : list[str], optional
+            List of segment paths to filter by (e.g., "20230126_01").
+        geometry : optional
+            Geospatial geometry to filter by (e.g., a shapely geometry object).
+        date_range : str, optional
+            Single date+time, or a range (`/` separator), formatted to
+                RFC 3339, section 5.6.  Use `/` for open date ranges.
+                Partial dates are also supported and will be automatically expanded
+                to full RFC 3339 datetime ranges: 
+                (e.g., "2010", "2010-06/2025-10", "2010-06/", "2023-01-01T00:00:00Z/2023-12-31T23:59:59Z")
         properties : dict, optional
             Additional STAC properties to filter by.
         max_items : int, optional
