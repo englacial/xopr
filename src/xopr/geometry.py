@@ -43,7 +43,7 @@ def get_antarctic_regions(
     subregions=None # Deprecated alias for "subregion"
 ):
     """
-    Load and filter Antarctic regional boundaries from the MEASURES dataset.
+    Load and filter Antarctic regional boundaries from the MEaSUREs dataset.
 
     The data product is derived from:
 
@@ -124,7 +124,7 @@ def get_greenland_regions(
     simplify_tolerance=None,
 ):
     """
-    Load and filter Greenland regional boundaries
+    Load and filter Greenland regional boundaries as defined by the GrIMP project
 
     The data product is derived from:
 
@@ -136,7 +136,7 @@ def get_greenland_regions(
     >
     > Mouginot J, Rignot E, Scheuchl B, Millan R (2017) Comprehensive annual ice sheet velocity mapping using landsat-8, sentinel-1, and radarsat-2 data. Remote Sensing 9(4).
     >
-    > Howat IM, Negrete A, Smith BE (2014) The greenland ice mapping project (gimp) land classification and surface elevation data sets. The Cryosphere 8(4):1509–1518.
+    > Howat IM, Negrete A, Smith BE (2014) The greenland ice mapping project (GIMP) land classification and surface elevation data sets. The Cryosphere 8(4):1509–1518.
     >
     > https://datadryad.org/dataset/doi:10.7280/D1WT11
 
