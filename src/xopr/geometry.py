@@ -182,10 +182,16 @@ def _get_regions(
     subregion=None,
     type=None,
     merge_regions=True,
-    regions_geojson_url = "https://storage.googleapis.com/opr_stac/reference_geometry/measures_boundaries_4326.geojson",
-    merge_in_projection="EPSG:3031",
+    regions_geojson_url = None,
+    merge_in_projection=None,
     simplify_tolerance=None
 ):
+    if regions_geojson_url is None:
+        raise ValueError("regions_geojson_url must be provided")
+    
+    if merge_in_projection is None:
+        raise ValueError("merge_in_projection must be provided")
+
     # Load the boundaries GeoJSON from the reference URL
     filtered = gpd.read_file(regions_geojson_url)
 
