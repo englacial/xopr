@@ -188,7 +188,7 @@ def _get_regions(
 ):
     if regions_geojson_url is None:
         raise ValueError("regions_geojson_url must be provided")
-    
+
     if merge_in_projection is None:
         raise ValueError("merge_in_projection must be provided")
 
