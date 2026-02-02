@@ -33,7 +33,6 @@ def _get_duckdb_client():
     global _duckdb_client
     if _duckdb_client is None:
         _duckdb_client = DuckdbClient()
-        _duckdb_client.execute("SET enable_external_file_cache=true")
     return _duckdb_client
 
 # Cloud URLs for bedmap STAC catalog files
