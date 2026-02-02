@@ -105,7 +105,6 @@ class OPRConnection:
         # Persistent DuckDB client for STAC queries — reusing a single session
         # caches remote file metadata (parquet footers, HTTP headers) across calls
         self._duckdb_client = DuckdbClient()
-        self._duckdb_client.execute("SET enable_external_file_cache=true")
 
     def _open_file(self, url):
         """Helper method to open files with appropriate caching."""
