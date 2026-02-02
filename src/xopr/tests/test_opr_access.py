@@ -1,5 +1,4 @@
 import time
-import warnings
 
 import pytest
 from rustac import DuckdbClient

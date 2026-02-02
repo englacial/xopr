@@ -442,8 +442,6 @@ def query_bedmap_catalog(
     # Handle max_items
     if max_items is not None:
         search_params['limit'] = max_items
-    else:
-        search_params['limit'] = 1000000
 
     # Handle property filters using CQL2
     filter_conditions = []

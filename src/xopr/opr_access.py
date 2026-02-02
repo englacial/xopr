@@ -188,8 +188,6 @@ class OPRConnection:
         # Handle max_items
         if max_items is not None:
             search_params['limit'] = max_items
-        else:
-            search_params['limit'] = 1000000
 
         # Handle segment_paths filtering using CQL2
         filter_conditions = []
