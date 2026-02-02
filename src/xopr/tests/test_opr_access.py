@@ -2,6 +2,7 @@ import time
 import warnings
 
 import pytest
+from rustac import DuckdbClient
 
 import xopr
 import xopr.geometry
@@ -10,6 +11,21 @@ import xopr.geometry
 # Set to 'warn' to fall back to file-based layers with a warning when db is unavailable.
 # Set to 'error' to fail tests if db is unavailable (strict mode).
 OPS_DB_FAILURE_MODE = 'warn'  # Options: 'warn', 'error'
+
+
+def test_duckdb_client_reuse():
+    """Test that OPRConnection reuses a single DuckdbClient across calls."""
+    opr = xopr.OPRConnection()
+    assert isinstance(opr._duckdb_client, DuckdbClient)
+
+    # The same client instance should be used for multiple calls
+    client_before = opr._duckdb_client
+    opr.get_collections()
+    assert opr._duckdb_client is client_before
+
+    opr.query_frames(collections=['2017_Antarctica_P3'],
+                     segment_paths=['20171115_02'], max_items=1)
+    assert opr._duckdb_client is client_before
 
 
 def test_get_collections():

@@ -23,6 +23,19 @@ from .geometry import (
     get_polar_bounds,
 )
 
+# Module-level DuckDB client for STAC catalog queries — reusing a single
+# session caches remote file metadata (parquet footers) across calls
+_duckdb_client = None
+
+
+def _get_duckdb_client():
+    """Get or create the module-level DuckdbClient singleton."""
+    global _duckdb_client
+    if _duckdb_client is None:
+        _duckdb_client = DuckdbClient()
+        _duckdb_client.execute("SET enable_external_file_cache=true")
+    return _duckdb_client
+
 # Cloud URLs for bedmap STAC catalog files
 BEDMAP_CATALOG_URLS = {
     'bedmap1': 'gs://opr_stac/bedmap/bedmap1.parquet',
@@ -470,8 +483,7 @@ def query_bedmap_catalog(
         search_params['filter'] = filter_expr
 
     # Perform the search using rustac
-    client = DuckdbClient()
-    items = client.search(catalog_path, **search_params)
+    items = _get_duckdb_client().search(catalog_path, **search_params)
 
     if isinstance(items, dict):
         items = items['features']

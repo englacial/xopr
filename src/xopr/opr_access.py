@@ -102,6 +102,11 @@ class OPRConnection:
 
         self.db_layers_metadata = None # Cache for OPS database layers metadata
 
+        # Persistent DuckDB client for STAC queries — reusing a single session
+        # caches remote file metadata (parquet footers, HTTP headers) across calls
+        self._duckdb_client = DuckdbClient()
+        self._duckdb_client.execute("SET enable_external_file_cache=true")
+
     def _open_file(self, url):
         """Helper method to open files with appropriate caching."""
         if self.fsspec_url_prefix:
@@ -254,8 +259,7 @@ class OPRConnection:
 
         # Perform the search
         # from rustac import DuckdbClient
-        client = DuckdbClient()
-        items = client.search(self.stac_parquet_href, **search_params)
+        items = self._duckdb_client.search(self.stac_parquet_href, **search_params)
         if isinstance(items, dict):
             items = items['features']
 
@@ -538,8 +542,7 @@ class OPRConnection:
             List of collection dictionaries with id, description, and extent.
         """
 
-        client = DuckdbClient()
-        return client.get_collections(self.stac_parquet_href)
+        return self._duckdb_client.get_collections(self.stac_parquet_href)
 
     def get_segments(self, collection_id: str) -> list:
         """
