@@ -69,6 +69,17 @@ def local_catalog_path():
     return get_bedmap_catalog_path()
 
 
+@pytest.fixture(scope="session")
+def opr_connection():
+    """Pre-warmed OPRConnection with cached parquet footers."""
+    from xopr.opr_access import OPRConnection
+
+    conn = OPRConnection()
+    # Warm the DuckDB client and parquet footer cache with a small query
+    conn.query_frames(collections=["1993_Greenland_P3"], max_items=1)
+    return conn
+
+
 @pytest.fixture
 def antarctic_bbox():
     """Bounding box over West Antarctica for spatial queries."""
@@ -152,3 +163,23 @@ def test_query_bedmap_catalog_combined(antarctic_bbox, local_catalog_path):
         catalog_path="local",
     )
     assert len(result) >= 0
+
+
+# ---------------------------------------------------------------------------
+# OPR STAC query benchmarks (general radar catalog, not bedmap)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.benchmark
+def test_query_opr_spatial(antarctic_bbox, opr_connection):
+    """Benchmark spatial query against OPR STAC catalog."""
+    result = opr_connection.query_frames(geometry=antarctic_bbox, max_items=50)
+    assert result is not None
+
+
+@pytest.mark.benchmark
+def test_query_opr_collection(opr_connection):
+    """Benchmark collection query against OPR STAC catalog."""
+    result = opr_connection.query_frames(
+        collections=["1993_Greenland_P3"], max_items=50,
+    )
+    assert result is not None
