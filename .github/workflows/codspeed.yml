@@ -117,4 +117,7 @@ jobs:
       uses: CodSpeedHQ/action@v3
       with:
         mode: walltime
-        run: uv run pytest src/xopr/tests/test_bench_walltime.py --codspeed -o "addopts="
+        run: >
+          uv run pytest src/xopr/tests/test_bench_walltime.py
+          --codspeed --codspeed-warmup-time=1.0
+          -o "addopts="
