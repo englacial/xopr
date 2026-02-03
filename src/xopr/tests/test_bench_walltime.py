@@ -42,7 +42,7 @@ def antarctic_bbox():
 # Bedmap STAC catalog query benchmarks
 # ---------------------------------------------------------------------------
 
-@pytest.mark.benchmark
+@pytest.mark.benchmark(min_time=0.1, max_time=5.0, max_rounds=50)
 def test_query_bedmap_catalog_spatial(antarctic_bbox, local_catalog_path):
     """Benchmark spatial query against locally cached bedmap STAC catalogs."""
     from xopr.bedmap.query import query_bedmap_catalog
@@ -54,7 +54,7 @@ def test_query_bedmap_catalog_spatial(antarctic_bbox, local_catalog_path):
     assert len(result) > 0
 
 
-@pytest.mark.benchmark
+@pytest.mark.benchmark(min_time=0.1, max_time=5.0, max_rounds=50)
 def test_query_bedmap_catalog_collection(local_catalog_path):
     """Benchmark collection-filtered query against locally cached catalogs."""
     from xopr.bedmap.query import query_bedmap_catalog
@@ -66,7 +66,7 @@ def test_query_bedmap_catalog_collection(local_catalog_path):
     assert len(result) > 0
 
 
-@pytest.mark.benchmark
+@pytest.mark.benchmark(min_time=0.1, max_time=5.0, max_rounds=50)
 def test_query_bedmap_catalog_combined(antarctic_bbox, local_catalog_path):
     """Benchmark combined spatial + collection query on local catalogs."""
     from xopr.bedmap.query import query_bedmap_catalog
@@ -83,14 +83,14 @@ def test_query_bedmap_catalog_combined(antarctic_bbox, local_catalog_path):
 # OPR STAC query benchmarks (general radar catalog)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.benchmark
+@pytest.mark.benchmark(min_time=0.1, max_time=5.0, max_rounds=50)
 def test_query_opr_spatial(antarctic_bbox, opr_connection):
     """Benchmark spatial query against OPR STAC catalog."""
     result = opr_connection.query_frames(geometry=antarctic_bbox, max_items=50)
     assert result is not None
 
 
-@pytest.mark.benchmark
+@pytest.mark.benchmark(min_time=0.1, max_time=5.0, max_rounds=50)
 def test_query_opr_collection(opr_connection):
     """Benchmark collection query against OPR STAC catalog."""
     result = opr_connection.query_frames(
