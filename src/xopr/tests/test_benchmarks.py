@@ -6,11 +6,10 @@ locally with pytest-benchmark. Use ``uv run --extra bench pytest
 src/xopr/tests/test_benchmarks.py`` to run them.
 """
 
+import geopandas as gpd
 import numpy as np
 import pytest
-import geopandas as gpd
-import pandas as pd
-from shapely.geometry import Point, box
+from shapely.geometry import box
 
 
 # ---------------------------------------------------------------------------
