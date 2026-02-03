@@ -102,9 +102,21 @@ class OPRConnection:
 
         self.db_layers_metadata = None # Cache for OPS database layers metadata
 
-        # Persistent DuckDB client for STAC queries — reusing a single session
-        # caches remote file metadata (parquet footers, HTTP headers) across calls
-        self._duckdb_client = DuckdbClient()
+        # Lazy-initialized DuckDB client for STAC queries — reusing a single
+        # session caches remote file metadata (parquet footers) across calls
+        self._duckdb_client = None
+
+    @property
+    def duckdb_client(self):
+        """Lazy-initialized DuckDB client, recreated after pickling."""
+        if self._duckdb_client is None:
+            self._duckdb_client = DuckdbClient()
+        return self._duckdb_client
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['_duckdb_client'] = None  # DuckdbClient can't be pickled
+        return state
 
     def _open_file(self, url):
         """Helper method to open files with appropriate caching."""
@@ -256,7 +268,7 @@ class OPRConnection:
 
         # Perform the search
         # from rustac import DuckdbClient
-        items = self._duckdb_client.search(self.stac_parquet_href, **search_params)
+        items = self.duckdb_client.search(self.stac_parquet_href, **search_params)
         if isinstance(items, dict):
             items = items['features']
 
@@ -539,7 +551,7 @@ class OPRConnection:
             List of collection dictionaries with id, description, and extent.
         """
 
-        return self._duckdb_client.get_collections(self.stac_parquet_href)
+        return self.duckdb_client.get_collections(self.stac_parquet_href)
 
     def get_segments(self, collection_id: str) -> list:
         """

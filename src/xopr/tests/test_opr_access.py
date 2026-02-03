@@ -1,3 +1,4 @@
+import pickle
 import time
 
 import pytest
@@ -15,16 +16,34 @@ OPS_DB_FAILURE_MODE = 'warn'  # Options: 'warn', 'error'
 def test_duckdb_client_reuse():
     """Test that OPRConnection reuses a single DuckdbClient across calls."""
     opr = xopr.OPRConnection()
-    assert isinstance(opr._duckdb_client, DuckdbClient)
+
+    # Client is lazy-initialized on first access
+    assert opr._duckdb_client is None
+    client = opr.duckdb_client
+    assert isinstance(client, DuckdbClient)
 
     # The same client instance should be used for multiple calls
-    client_before = opr._duckdb_client
     opr.get_collections()
-    assert opr._duckdb_client is client_before
+    assert opr.duckdb_client is client
 
     opr.query_frames(collections=['2017_Antarctica_P3'],
                      segment_paths=['20171115_02'], max_items=1)
-    assert opr._duckdb_client is client_before
+    assert opr.duckdb_client is client
+
+
+def test_duckdb_client_pickling():
+    """Test that OPRConnection can be pickled (required for Dask)."""
+    opr = xopr.OPRConnection()
+    opr.duckdb_client  # force initialization
+
+    # Should pickle without error
+    data = pickle.dumps(opr)
+    opr2 = pickle.loads(data)
+
+    # Client is reset to None after unpickling, recreated on next access
+    assert opr2._duckdb_client is None
+    assert isinstance(opr2.duckdb_client, DuckdbClient)
+    assert opr2.collection_url == opr.collection_url
 
 
 def test_get_collections():
