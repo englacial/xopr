@@ -13,7 +13,7 @@ import requests
 from platformdirs import user_cache_dir
 
 # Cloud URLs for bedmap catalogs
-BEDMAP_CATALOG_BASE_URL = "https://storage.googleapis.com/opr_stac/bedmap"
+BEDMAP_CATALOG_BASE_URL = "https://data.source.coop/englacial/bedmap"
 BEDMAP_CATALOG_FILES = ["bedmap1.parquet", "bedmap2.parquet", "bedmap3.parquet"]
 
 

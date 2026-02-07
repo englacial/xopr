@@ -76,7 +76,7 @@ class OPRConnection:
     def __init__(self,
                  collection_url: str = "https://data.cresis.ku.edu/data/",
                  cache_dir: str = None,
-                 stac_parquet_href: str = "gs://opr_stac/catalog/**/*.parquet"):
+                 stac_parquet_href: str = "s3://us-west-2.opendata.source.coop/englacial/xopr/catalog/**/*.parquet"):
         """
         Initialize connection to OPR data archive.
 

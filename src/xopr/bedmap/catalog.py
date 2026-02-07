@@ -62,7 +62,7 @@ def read_parquet_metadata(parquet_path: Union[str, Path]) -> Dict:
 def build_bedmap_geoparquet_catalog(
     parquet_dir: Union[str, Path],
     output_dir: Union[str, Path],
-    base_href: str = 'gs://opr_stac/bedmap/data/',
+    base_href: str = 's3://us-west-2.opendata.source.coop/englacial/bedmap/data/',
     simplify_tolerance: float = 0.01
 ) -> Dict[str, gpd.GeoDataFrame]:
     """

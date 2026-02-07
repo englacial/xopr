@@ -231,7 +231,7 @@ class TestQueryIntegrationWithCatalogPath:
 
             if mock_instance.search.called:
                 called_path = mock_instance.search.call_args[0][0]
-                assert 'gs://opr_stac/bedmap' in called_path
+                assert 's3://us-west-2.opendata.source.coop/englacial/bedmap' in called_path
 
     def test_query_bedmap_catalog_custom_path(self):
         """Test that custom catalog_path is passed through."""
