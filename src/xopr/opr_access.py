@@ -49,6 +49,7 @@ ops_api : Interface to the OPS database API
 """
 
 import re
+import threading
 import warnings
 from typing import Union
 
@@ -65,6 +66,7 @@ import xarray as xr
 from rustac import DuckdbClient
 
 from . import opr_tools, ops_api
+from .stac_cache import get_opr_catalog_path, sync_opr_catalogs
 from .cf_units import apply_cf_compliant_attrs
 from .matlab_attribute_utils import (
     decode_hdf5_matlab_variable,
@@ -76,7 +78,8 @@ class OPRConnection:
     def __init__(self,
                  collection_url: str = "https://data.cresis.ku.edu/data/",
                  cache_dir: str = None,
-                 stac_parquet_href: str = "s3://us-west-2.opendata.source.coop/englacial/xopr/catalog/**/*.parquet"):
+                 stac_parquet_href: str = None,
+                 sync_catalogs: bool = True):
         """
         Initialize connection to OPR data archive.
 
@@ -87,11 +90,17 @@ class OPRConnection:
         cache_dir : str, optional
             Directory to cache downloaded data for faster repeated access.
         stac_parquet_href : str, optional
-            Path or URL pattern to STAC catalog parquet files.
+            Path or URL pattern to STAC catalog parquet files.  When *None*
+            (default), the local cache is used if available, falling back to
+            the S3 catalog.
+        sync_catalogs : bool, optional
+            If True (default), spawn a background thread to sync OPR STAC
+            catalogs to the local cache.
         """
         self.collection_url = collection_url
         self.cache_dir = cache_dir
-        self.stac_parquet_href = stac_parquet_href
+        self._user_set_href = stac_parquet_href is not None
+        self.stac_parquet_href = stac_parquet_href or get_opr_catalog_path()
 
         self.fsspec_cache_kwargs = {}
         self.fsspec_url_prefix = ''
@@ -106,6 +115,20 @@ class OPRConnection:
         # session caches remote file metadata (parquet footers) across calls
         self._duckdb_client = None
 
+        # Background catalog sync
+        self._sync_thread = None
+        if sync_catalogs and not self._user_set_href:
+            self._sync_thread = threading.Thread(
+                target=self._background_sync, daemon=True
+            )
+            self._sync_thread.start()
+
+    def _background_sync(self):
+        """Sync OPR catalogs and update href if local cache is now available."""
+        sync_opr_catalogs()
+        if not self._user_set_href:
+            self.stac_parquet_href = get_opr_catalog_path()
+
     @property
     def duckdb_client(self):
         """Lazy-initialized DuckDB client, recreated after pickling."""
@@ -116,6 +139,7 @@ class OPRConnection:
     def __getstate__(self):
         state = self.__dict__.copy()
         state['_duckdb_client'] = None  # DuckdbClient can't be pickled
+        state['_sync_thread'] = None    # threads can't be pickled
         return state
 
     def _open_file(self, url):

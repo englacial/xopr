@@ -1,11 +1,15 @@
+import os
 import pickle
+import tempfile
 import time
+from unittest.mock import patch
 
 import pytest
 from rustac import DuckdbClient
 
 import xopr
 import xopr.geometry
+from xopr.stac_cache import OPR_CATALOG_S3_GLOB
 
 # Configuration flag for OPS database failure handling in tests.
 # Set to 'warn' to fall back to file-based layers with a warning when db is unavailable.
@@ -195,3 +199,48 @@ def test_exclude_geometry(query_params):
             if key in ['geometry', 'links']:
                 continue
             assert w_geom[key] == wo_geom[key], f"Expected {key} to match in both items, got {w_geom[key]} != {wo_geom[key]}"
+
+
+# ---------------------------------------------------------------------------
+# OPR catalog sync / caching tests
+# ---------------------------------------------------------------------------
+
+
+def test_sync_catalogs_false():
+    """sync_catalogs=False should not spawn a background thread."""
+    with patch('xopr.opr_access.sync_opr_catalogs'):
+        opr = xopr.OPRConnection(sync_catalogs=False)
+        assert opr._sync_thread is None
+
+
+def test_sync_catalogs_default():
+    """Default construction spawns a daemon sync thread."""
+    with patch('xopr.opr_access.sync_opr_catalogs'):
+        with patch('xopr.opr_access.get_opr_catalog_path', return_value=OPR_CATALOG_S3_GLOB):
+            opr = xopr.OPRConnection()
+            assert opr._sync_thread is not None
+            assert opr._sync_thread.daemon is True
+            opr._sync_thread.join(timeout=5)
+
+
+def test_explicit_href_preserved():
+    """User-provided stac_parquet_href should not be overwritten by sync."""
+    custom = "/my/custom/path/**/*.parquet"
+    with patch('xopr.opr_access.sync_opr_catalogs'):
+        opr = xopr.OPRConnection(stac_parquet_href=custom)
+        assert opr.stac_parquet_href == custom
+        # No sync thread should be started for explicit hrefs
+        assert opr._sync_thread is None
+
+
+def test_pickle_excludes_thread():
+    """Pickling OPRConnection should drop _sync_thread."""
+    with patch('xopr.opr_access.sync_opr_catalogs'):
+        with patch('xopr.opr_access.get_opr_catalog_path', return_value=OPR_CATALOG_S3_GLOB):
+            opr = xopr.OPRConnection()
+            opr._sync_thread.join(timeout=5)
+
+            data = pickle.dumps(opr)
+            opr2 = pickle.loads(data)
+            assert opr2._sync_thread is None
+            assert opr2.stac_parquet_href == opr.stac_parquet_href
