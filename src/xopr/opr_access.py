@@ -66,12 +66,12 @@ import xarray as xr
 from rustac import DuckdbClient
 
 from . import opr_tools, ops_api
-from .stac_cache import get_opr_catalog_path, sync_opr_catalogs
 from .cf_units import apply_cf_compliant_attrs
 from .matlab_attribute_utils import (
     decode_hdf5_matlab_variable,
     extract_legacy_mat_attributes,
 )
+from .stac_cache import get_opr_catalog_path, sync_opr_catalogs
 
 
 class OPRConnection:

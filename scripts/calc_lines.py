@@ -18,11 +18,11 @@ except ImportError as e:
 try:
     # Initialize geodesic calculator
     geod = Geod(ellps="WGS84")
-    
+
     # Connect to parquet files
     client = DuckdbClient()
     partitioned_destination = 's3://us-west-2.opendata.source.coop/englacial/xopr/catalog/**/*parquet'
-    
+
     # Define regions
     arctic_region = box(-180, 0, 180, 90)      # Northern hemisphere
     antarctic_region = box(-180, -90, 180, 0)   # Southern hemisphere
