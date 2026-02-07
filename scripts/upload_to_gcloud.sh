@@ -10,5 +10,5 @@ scp tteisberg_sta@lps05:/kucresis/scratch/tteisberg_sta/scripts/xopr/scripts/out
 scp tteisberg_sta@lps05:/kucresis/scratch/tteisberg_sta/scripts/xopr/scripts/output/collections.json scripts/output/
 
 # Upload OPR STAC catalog to Google Cloud Storage
-gsutil cp scripts/output/*.parquet gs://opr_stac/testing/
-gsutil cp scripts/output/collections.json gs://opr_stac/testing/collections.json
+gsutil cp scripts/output/*.parquet s3://us-west-2.opendata.source.coop/englacial/xopr/testing/
+gsutil cp scripts/output/collections.json s3://us-west-2.opendata.source.coop/englacial/xopr/testing/collections.json

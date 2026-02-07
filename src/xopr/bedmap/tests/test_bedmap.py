@@ -939,7 +939,7 @@ class TestGeometryAdvanced:
 class TestQueryCatalogCloud:
     """Tests for query_bedmap_catalog against actual cloud STAC catalogs.
 
-    Note: These tests require network access to gs://opr_stac/bedmap/
+    Note: These tests require network access to s3://us-west-2.opendata.source.coop/englacial/bedmap/
     The query functions use rustac's DuckdbClient for proper STAC GeoParquet searching.
     """
 
@@ -954,7 +954,7 @@ class TestQueryCatalogCloud:
         # Query the real cloud catalog - just check structure, not content
         try:
             result = query_bedmap_catalog(
-                catalog_path='gs://opr_stac/bedmap/bedmap*.parquet',
+                catalog_path='s3://us-west-2.opendata.source.coop/englacial/bedmap/bedmap*.parquet',
                 max_items=5  # Limit to avoid downloading too much
             )
 

@@ -17,7 +17,7 @@ Below are Antarctic and Arctic maps showing radar data availability. These maps 
 :width: 100%
 :height: 600px
 :pole: south
-:dataPath: https://storage.googleapis.com/opr_stac/catalog/hemisphere=south
+:dataPath: https://data.source.coop/englacial/xopr/catalog/hemisphere=south
 :fileGroups: [{"files": ["provider=cresis/*"], "color": "navy"}, {"files": ["provider=utig/*"], "color": "orange"}]
 :defaultZoom: 3
 :::
@@ -28,7 +28,7 @@ Below are Antarctic and Arctic maps showing radar data availability. These maps 
 :width: 100%
 :height: 600px
 :pole: north
-:dataPath: https://storage.googleapis.com/opr_stac/catalog/hemisphere=north
+:dataPath: https://data.source.coop/englacial/xopr/catalog/hemisphere=north
 :fileGroups: [{"files": ["provider=cresis/*"], "color": "navy"}, {"files": ["provider=utig/*"], "color": "orange"}, {"files": ["provider=dtu/*"], "color": "red"}, {"files": ["provider=awi/*"], "color": "lightblue"}]
 :defaultZoom: 3
 :::

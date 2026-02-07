@@ -55,7 +55,7 @@ Examples:
     parser.add_argument(
         '--base-href',
         type=str,
-        default='gs://opr_stac/bedmap/data/',
+        default='s3://us-west-2.opendata.source.coop/englacial/bedmap/data/',
         help='Base URL/path for data assets in catalog'
     )
 

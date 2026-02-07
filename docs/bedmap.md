@@ -4,7 +4,7 @@
 :width: 100%
 :height: 600px
 :pole: south
-:dataPath: https://storage.googleapis.com/opr_stac/bedmap
+:dataPath: https://data.source.coop/englacial/bedmap
 :fileGroups: [{"files": ["bedmap1.parquet"], "color": "red"}, {"files": ["bedmap2.parquet"], "color": "orange"}, {"files": ["bedmap3.parquet"], "color": "navy"}]
 :defaultZoom: 3
 :::
