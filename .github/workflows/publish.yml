@@ -201,10 +201,10 @@ jobs:
 
     - name: Commit changelog and requirements updates
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
       run: |
-        git config --local user.name "github-actions[bot]"
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "englacial-release-bot[bot]"
+        git config --local user.email "englacial-release-bot[bot]@users.noreply.github.com"
 
         # Switch to main branch and pull latest changes
         git checkout main
