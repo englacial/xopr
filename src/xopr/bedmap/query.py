@@ -37,9 +37,9 @@ def _get_duckdb_client():
 
 # Cloud URLs for bedmap STAC catalog files
 BEDMAP_CATALOG_URLS = {
-    'bedmap1': 'gs://opr_stac/bedmap/bedmap1.parquet',
-    'bedmap2': 'gs://opr_stac/bedmap/bedmap2.parquet',
-    'bedmap3': 'gs://opr_stac/bedmap/bedmap3.parquet',
+    'bedmap1': 'https://data.source.coop/englacial/bedmap/bedmap1.parquet',
+    'bedmap2': 'https://data.source.coop/englacial/bedmap/bedmap2.parquet',
+    'bedmap3': 'https://data.source.coop/englacial/bedmap/bedmap3.parquet',
 }
 
 # Default cache directories
@@ -54,10 +54,11 @@ DEFAULT_BEDMAP_DATA_DIR = DEFAULT_RADAR_CACHE / 'bedmap'
 
 
 def _gs_to_https(gs_url: str) -> str:
-    """Convert gs:// URL to public https:// URL for anonymous access."""
+    """Convert cloud storage URL to public HTTPS URL for anonymous access."""
     if gs_url.startswith('gs://'):
-        # gs://bucket/path -> https://storage.googleapis.com/bucket/path
         return gs_url.replace('gs://', 'https://storage.googleapis.com/', 1)
+    if gs_url.startswith('s3://us-west-2.opendata.source.coop/'):
+        return gs_url.replace('s3://us-west-2.opendata.source.coop/', 'https://data.source.coop/', 1)
     return gs_url
 
 
@@ -400,7 +401,7 @@ def query_bedmap_catalog(
     if catalog_path == 'local':
         catalog_path = get_bedmap_catalog_path()
     elif catalog_path == 'cloud':
-        catalog_path = 'gs://opr_stac/bedmap/bedmap*.parquet'
+        catalog_path = 's3://us-west-2.opendata.source.coop/englacial/bedmap/bedmap*.parquet'
 
     search_params = {}
 

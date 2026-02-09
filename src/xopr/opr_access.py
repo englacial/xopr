@@ -70,13 +70,15 @@ from .matlab_attribute_utils import (
     decode_hdf5_matlab_variable,
     extract_legacy_mat_attributes,
 )
+from .stac_cache import get_opr_catalog_path, sync_opr_catalogs
 
 
 class OPRConnection:
     def __init__(self,
                  collection_url: str = "https://data.cresis.ku.edu/data/",
                  cache_dir: str = None,
-                 stac_parquet_href: str = "gs://opr_stac/catalog/**/*.parquet"):
+                 stac_parquet_href: str = None,
+                 sync_catalogs: bool = True):
         """
         Initialize connection to OPR data archive.
 
@@ -87,11 +89,20 @@ class OPRConnection:
         cache_dir : str, optional
             Directory to cache downloaded data for faster repeated access.
         stac_parquet_href : str, optional
-            Path or URL pattern to STAC catalog parquet files.
+            Path or URL pattern to STAC catalog parquet files.  When *None*
+            (default), the local cache is used if available, falling back to
+            the S3 catalog.
+        sync_catalogs : bool, optional
+            If True (default), sync OPR STAC catalogs to a local cache
+            before resolving the catalog path.  Uses ETag-based change
+            detection so repeated calls are cheap (single HTTP request).
         """
         self.collection_url = collection_url
         self.cache_dir = cache_dir
-        self.stac_parquet_href = stac_parquet_href
+        self._user_set_href = stac_parquet_href is not None
+        if sync_catalogs and not self._user_set_href:
+            sync_opr_catalogs()
+        self.stac_parquet_href = stac_parquet_href or get_opr_catalog_path()
 
         self.fsspec_cache_kwargs = {}
         self.fsspec_url_prefix = ''

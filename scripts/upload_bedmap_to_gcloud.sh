@@ -58,8 +58,8 @@ fi
 # Set variables
 PARQUET_DIR="scripts/output/bedmap"
 CATALOG_DIR="scripts/output/bedmap_catalog"
-GCS_DATA_PATH="gs://opr_stac/bedmap/data/"
-GCS_CATALOG_ROOT="gs://opr_stac/bedmap/"
+GCS_DATA_PATH="s3://us-west-2.opendata.source.coop/englacial/bedmap/data/"
+GCS_CATALOG_ROOT="s3://us-west-2.opendata.source.coop/englacial/bedmap/"
 
 # Check if parquet files exist
 if [ ! -d "$PARQUET_DIR" ]; then
@@ -104,9 +104,9 @@ if [ -d "$CATALOG_DIR" ]; then
     echo ""
     echo "Uploading bedmap GeoParquet STAC catalogs..."
     echo "  Source: $CATALOG_DIR/bedmap*.parquet"
-    echo "  Destination: gs://opr_stac/bedmap/"
+    echo "  Destination: s3://us-west-2.opendata.source.coop/englacial/bedmap/"
 
-    gsutil $DEBUG -m cp $VERBOSE $DRY_RUN "$CATALOG_DIR"/bedmap*.parquet "gs://opr_stac/bedmap/"
+    gsutil $DEBUG -m cp $VERBOSE $DRY_RUN "$CATALOG_DIR"/bedmap*.parquet "s3://us-west-2.opendata.source.coop/englacial/bedmap/"
 
     if [ $? -eq 0 ]; then
       echo "✓ GeoParquet catalogs uploaded successfully"
@@ -131,7 +131,7 @@ if [ -z "$DRY_RUN" ]; then
 
   echo ""
   echo "Catalog files:"
-  gsutil $DEBUG ls "gs://opr_stac/bedmap/bedmap*.parquet" 2>/dev/null || echo "  (no catalog files found)"
+  gsutil $DEBUG ls "s3://us-west-2.opendata.source.coop/englacial/bedmap/bedmap*.parquet" 2>/dev/null || echo "  (no catalog files found)"
 else
   echo ""
   echo "Skipping verification in dry-run mode"

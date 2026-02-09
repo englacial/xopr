@@ -1,11 +1,13 @@
 import pickle
 import time
+from unittest.mock import patch
 
 import pytest
 from rustac import DuckdbClient
 
 import xopr
 import xopr.geometry
+from xopr.stac_cache import OPR_CATALOG_S3_GLOB
 
 # Configuration flag for OPS database failure handling in tests.
 # Set to 'warn' to fall back to file-based layers with a warning when db is unavailable.
@@ -195,3 +197,43 @@ def test_exclude_geometry(query_params):
             if key in ['geometry', 'links']:
                 continue
             assert w_geom[key] == wo_geom[key], f"Expected {key} to match in both items, got {w_geom[key]} != {wo_geom[key]}"
+
+
+# ---------------------------------------------------------------------------
+# OPR catalog sync / caching tests
+# ---------------------------------------------------------------------------
+
+
+def test_sync_catalogs_false():
+    """sync_catalogs=False should skip sync call."""
+    with patch('xopr.opr_access.sync_opr_catalogs') as mock_sync:
+        xopr.OPRConnection(sync_catalogs=False)
+        mock_sync.assert_not_called()
+
+
+def test_sync_catalogs_default():
+    """Default construction calls sync_opr_catalogs."""
+    with patch('xopr.opr_access.sync_opr_catalogs') as mock_sync:
+        with patch('xopr.opr_access.get_opr_catalog_path', return_value=OPR_CATALOG_S3_GLOB):
+            xopr.OPRConnection()
+            mock_sync.assert_called_once()
+
+
+def test_explicit_href_preserved():
+    """User-provided stac_parquet_href should not trigger sync."""
+    custom = "/my/custom/path/**/*.parquet"
+    with patch('xopr.opr_access.sync_opr_catalogs') as mock_sync:
+        opr = xopr.OPRConnection(stac_parquet_href=custom)
+        assert opr.stac_parquet_href == custom
+        mock_sync.assert_not_called()
+
+
+def test_pickle_roundtrip():
+    """Pickling OPRConnection preserves stac_parquet_href."""
+    with patch('xopr.opr_access.sync_opr_catalogs'):
+        with patch('xopr.opr_access.get_opr_catalog_path', return_value=OPR_CATALOG_S3_GLOB):
+            opr = xopr.OPRConnection()
+            data = pickle.dumps(opr)
+            opr2 = pickle.loads(data)
+            assert opr2._duckdb_client is None
+            assert opr2.stac_parquet_href == opr.stac_parquet_href

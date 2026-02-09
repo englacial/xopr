@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Upload STAC parquet collection catalogs to the correct GCS locations.
+Upload STAC parquet collection catalogs to the correct S3 locations.
 
 This script processes a directory of STAC parquet files and uploads them to:
-  gs://opr_stac/catalog/hemisphere=<north|south>/provider=<provider>/collection=<collection>/
+  s3://us-west-2.opendata.source.coop/englacial/xopr/catalog/hemisphere=<north|south>/provider=<provider>/collection=<collection>/
 
 The hemisphere and provider are read from the opr namespace metadata in the parquet file:
   - opr:hemisphere (north or south)
@@ -128,7 +128,7 @@ def check_gcs_auth() -> bool:
     """Check if GCS authentication is configured."""
     # Try to list the bucket
     env = os.environ.copy()
-    cmd = ["gsutil", "ls", "gs://opr_stac/"]
+    cmd = ["aws", "s3", "ls", "s3://us-west-2.opendata.source.coop/englacial/xopr/"]
     success, _, stderr = run_command(cmd, env)
 
     if not success:
@@ -153,7 +153,7 @@ def check_gcs_auth() -> bool:
 
 def build_gcs_path(hemisphere: str, provider: str, collection: str) -> str:
     """Build the GCS path for uploading."""
-    return f"gs://opr_stac/catalog/hemisphere={hemisphere}/provider={provider}/collection={collection}/stac.parquet"
+    return f"s3://us-west-2.opendata.source.coop/englacial/xopr/catalog/hemisphere={hemisphere}/provider={provider}/collection={collection}/stac.parquet"
 
 
 def upload_file(local_path: str, gcs_path: str, dry_run: bool = True) -> bool:
