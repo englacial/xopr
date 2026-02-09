@@ -1,0 +1,70 @@
+name: CodSpeed Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  bench-cpu:
+    name: "Benchmarks (CPU simulation)"
+    # Run on: main push (baseline), PR with label, or manual dispatch
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'run-benchmarks')) ||
+      (github.event_name == 'pull_request' &&
+       github.event.action == 'labeled' &&
+       github.event.label.name == 'run-benchmarks')
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: astral-sh/setup-uv@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Install dependencies
+      run: uv sync --extra bench
+
+    - name: Run CPU benchmarks
+      uses: CodSpeedHQ/action@v3
+      with:
+        run: uv run pytest src/xopr/tests/test_bench_cpu.py --codspeed -o "addopts="
+
+  bench-walltime:
+    name: "Benchmarks (walltime, macro runner)"
+    # Macro runners cost minutes — only run on main push or manual dispatch
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: codspeed-macro
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: astral-sh/setup-uv@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Install dependencies
+      run: uv sync --extra bench
+
+    - name: Run walltime benchmarks
+      uses: CodSpeedHQ/action@v3
+      with:
+        mode: walltime
+        run: >
+          uv run pytest src/xopr/tests/test_bench_walltime.py
+          --codspeed --codspeed-warmup-time=1.0
+          -o "addopts="
