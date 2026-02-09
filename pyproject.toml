@@ -61,6 +61,10 @@ test = [
     "stac-validator",
     "xopr[stac]"
 ]
+bench = [
+    "pytest",
+    "pytest-codspeed",
+]
 
 [tool.hatch.version]
 source = "vcs"
