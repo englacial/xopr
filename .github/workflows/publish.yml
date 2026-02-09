@@ -203,11 +203,12 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
       run: |
-        git config --local user.name "englacial-release-bot[bot]"
-        git config --local user.email "englacial-release-bot[bot]@users.noreply.github.com"
+        git config --local user.name "englacial-release-bot"
+        git config --local user.email "englacial-release-bot@users.noreply.github.com"
 
         # Configure git to use the app token for authentication
         git remote set-url origin https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}.git
+        git config --get remote.origin.url
 
         # Switch to main branch and pull latest changes
         git checkout main
