@@ -206,6 +206,9 @@ jobs:
         git config --local user.name "englacial-release-bot[bot]"
         git config --local user.email "englacial-release-bot[bot]@users.noreply.github.com"
 
+        # Configure git to use the app token for authentication
+        git remote set-url origin https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}.git
+
         # Switch to main branch and pull latest changes
         git checkout main
         git pull origin main
