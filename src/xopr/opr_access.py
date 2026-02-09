@@ -49,7 +49,6 @@ ops_api : Interface to the OPS database API
 """
 
 import re
-import threading
 import warnings
 from typing import Union
 
@@ -94,12 +93,15 @@ class OPRConnection:
             (default), the local cache is used if available, falling back to
             the S3 catalog.
         sync_catalogs : bool, optional
-            If True (default), spawn a background thread to sync OPR STAC
-            catalogs to the local cache.
+            If True (default), sync OPR STAC catalogs to a local cache
+            before resolving the catalog path.  Uses ETag-based change
+            detection so repeated calls are cheap (single HTTP request).
         """
         self.collection_url = collection_url
         self.cache_dir = cache_dir
         self._user_set_href = stac_parquet_href is not None
+        if sync_catalogs and not self._user_set_href:
+            sync_opr_catalogs()
         self.stac_parquet_href = stac_parquet_href or get_opr_catalog_path()
 
         self.fsspec_cache_kwargs = {}
@@ -115,20 +117,6 @@ class OPRConnection:
         # session caches remote file metadata (parquet footers) across calls
         self._duckdb_client = None
 
-        # Background catalog sync
-        self._sync_thread = None
-        if sync_catalogs and not self._user_set_href:
-            self._sync_thread = threading.Thread(
-                target=self._background_sync, daemon=True
-            )
-            self._sync_thread.start()
-
-    def _background_sync(self):
-        """Sync OPR catalogs and update href if local cache is now available."""
-        sync_opr_catalogs()
-        if not self._user_set_href:
-            self.stac_parquet_href = get_opr_catalog_path()
-
     @property
     def duckdb_client(self):
         """Lazy-initialized DuckDB client, recreated after pickling."""
@@ -139,7 +127,6 @@ class OPRConnection:
     def __getstate__(self):
         state = self.__dict__.copy()
         state['_duckdb_client'] = None  # DuckdbClient can't be pickled
-        state['_sync_thread'] = None    # threads can't be pickled
         return state
 
     def _open_file(self, url):

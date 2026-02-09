@@ -205,40 +205,35 @@ def test_exclude_geometry(query_params):
 
 
 def test_sync_catalogs_false():
-    """sync_catalogs=False should not spawn a background thread."""
-    with patch('xopr.opr_access.sync_opr_catalogs'):
-        opr = xopr.OPRConnection(sync_catalogs=False)
-        assert opr._sync_thread is None
+    """sync_catalogs=False should skip sync call."""
+    with patch('xopr.opr_access.sync_opr_catalogs') as mock_sync:
+        xopr.OPRConnection(sync_catalogs=False)
+        mock_sync.assert_not_called()
 
 
 def test_sync_catalogs_default():
-    """Default construction spawns a daemon sync thread."""
-    with patch('xopr.opr_access.sync_opr_catalogs'):
+    """Default construction calls sync_opr_catalogs."""
+    with patch('xopr.opr_access.sync_opr_catalogs') as mock_sync:
         with patch('xopr.opr_access.get_opr_catalog_path', return_value=OPR_CATALOG_S3_GLOB):
-            opr = xopr.OPRConnection()
-            assert opr._sync_thread is not None
-            assert opr._sync_thread.daemon is True
-            opr._sync_thread.join(timeout=5)
+            xopr.OPRConnection()
+            mock_sync.assert_called_once()
 
 
 def test_explicit_href_preserved():
-    """User-provided stac_parquet_href should not be overwritten by sync."""
+    """User-provided stac_parquet_href should not trigger sync."""
     custom = "/my/custom/path/**/*.parquet"
-    with patch('xopr.opr_access.sync_opr_catalogs'):
+    with patch('xopr.opr_access.sync_opr_catalogs') as mock_sync:
         opr = xopr.OPRConnection(stac_parquet_href=custom)
         assert opr.stac_parquet_href == custom
-        # No sync thread should be started for explicit hrefs
-        assert opr._sync_thread is None
+        mock_sync.assert_not_called()
 
 
-def test_pickle_excludes_thread():
-    """Pickling OPRConnection should drop _sync_thread."""
+def test_pickle_roundtrip():
+    """Pickling OPRConnection preserves stac_parquet_href."""
     with patch('xopr.opr_access.sync_opr_catalogs'):
         with patch('xopr.opr_access.get_opr_catalog_path', return_value=OPR_CATALOG_S3_GLOB):
             opr = xopr.OPRConnection()
-            opr._sync_thread.join(timeout=5)
-
             data = pickle.dumps(opr)
             opr2 = pickle.loads(data)
-            assert opr2._sync_thread is None
+            assert opr2._duckdb_client is None
             assert opr2.stac_parquet_href == opr.stac_parquet_href
