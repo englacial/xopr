@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-02-09
+
+- publish fix... and again (a55fced)
+
 ## [0.3.0] - 2025-12-08
 
 - Add bedmap data integration with xopr ([#38](https://github.com/englacial/xopr/pull/38)) by @espg
