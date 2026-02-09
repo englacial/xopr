@@ -63,7 +63,8 @@ test = [
 ]
 bench = [
     "pytest",
-    "pytest-codspeed",
+    "pytest-codspeed>=3.0",
+    "xopr[stac]",
 ]
 
 [tool.hatch.version]
