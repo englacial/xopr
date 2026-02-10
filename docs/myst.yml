@@ -36,6 +36,7 @@ site:
     analytics_plausible: docs.englacial.org/xopr
     logo_text: xOPR Documentation
     static_dir: _static
+    style: ./sphinx-api.css
   #   favicon: favicon.ico
   #   logo: site_logo.png
   # Site actions don't support dynamic variables like {file}
