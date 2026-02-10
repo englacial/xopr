@@ -53,6 +53,9 @@ docs = [
     "rioxarray",
     "verde",
     "pdoc>=14.0.0",
+    "sphinx>=6.2",
+    "myst-parser",
+    "sphinx-ext-mystmd @ git+https://github.com/weiji14/sphinx-ext-mystmd@e995908b3a898b9c9d5d3fec4ff1478f1f4c1ccd",
 ]
 test = [
     "pytest",
@@ -66,6 +69,9 @@ bench = [
     "pytest-codspeed>=3.0",
     "xopr[stac]",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.version]
 source = "vcs"

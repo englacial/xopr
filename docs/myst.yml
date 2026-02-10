@@ -21,8 +21,7 @@ project:
     - file: design.md
     - file: map.md
     - file: bedmap.md
-    - title: API Docs
-      url: /xopr/api/xopr.html
+    - pattern: _build/myst-asts/api.myst.json
     - title: Notebooks
       children:
         - file: notebooks/demo_notebook.ipynb
