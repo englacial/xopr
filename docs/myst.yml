@@ -21,8 +21,7 @@ project:
     - file: design.md
     - file: map.md
     - file: bedmap.md
-    - title: API Docs
-      url: /xopr/api/xopr.html
+    - pattern: _build/myst-asts/api.myst.json
     - title: Notebooks
       children:
         - file: notebooks/demo_notebook.ipynb
@@ -37,6 +36,7 @@ site:
     analytics_plausible: docs.englacial.org/xopr
     logo_text: xOPR Documentation
     static_dir: _static
+    style: ./sphinx-api.css
   #   favicon: favicon.ico
   #   logo: site_logo.png
   # Site actions don't support dynamic variables like {file}

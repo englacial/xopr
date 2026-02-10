@@ -1,0 +1,35 @@
+/* Styles for sphinx-ext-mystmd API docs rendered in MyST book-theme */
+
+/* Signature lines: allow wrapping and indent continuation lines */
+dt:has(.sphinx-desc-name) {
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Parameter list: display each param on its own line for readability */
+.sphinx-desc-parameterlist > em {
+  display: block;
+  margin-left: 2em;
+}
+
+/* Keep opening paren on the signature line, closing paren on its own line */
+.sphinx-desc-parameterlist {
+  white-space: normal;
+}
+
+/* Signature name styling */
+.sphinx-desc-name {
+  font-weight: 600;
+}
+
+/* Class/function keyword annotation */
+.sphinx-desc-annotation {
+  font-style: normal;
+  color: var(--ifm-color-emphasis-600, #6b7280);
+}
+
+/* Type annotations */
+.sphinx-desc-sig-name {
+  font-family: var(--ifm-font-family-monospace, monospace);
+}
