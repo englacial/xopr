@@ -9,7 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.3] - 2026-02-09
 
-- publish fix... and again (a55fced)
+- Switch catalog endpoints to source.coop ([#70](https://github.com/englacial/xopr/pull/70)) by @espg
+- Set up CI/CD for performance regression testing ([#68](https://github.com/englacial/xopr/pull/68)) by @espg
+- Reuse duckdb sessions ([#66](https://github.com/englacial/xopr/pull/66)) by @espg
+- API docs improvements ([#43](https://github.com/englacial/xopr/pull/43)) by @thomasteisberg
+- Add Greenland geometry helpers ([#61](https://github.com/englacial/xopr/pull/61)) by @thomasteisberg
+- layer_data conversion updates ([#53](https://github.com/englacial/xopr/pull/53)) by @espg
+- Matching file and db workflows ([#52](https://github.com/englacial/xopr/pull/52)) by @espg
+- Flight line coverage increased from: 1383244 km → 1440766 km ([#59](https://github.com/englacial/xopr/pull/59)) by @github-actions
+- Flight line coverage increased from: 1275658 km → 1383244 km ([#57](https://github.com/englacial/xopr/pull/57)) by @github-actions
+- Flight line coverage increased from: 1035652 km → 1275658 km ([#49](https://github.com/englacial/xopr/pull/49)) by @github-actions
+- Fix link text in design documentation ([#54](https://github.com/englacial/xopr/pull/54)) by @abarciauskas-bgse
+- Add ruff linting with reviewdog PR comments ([#47](https://github.com/englacial/xopr/pull/47)) by @espg
 
 ## [0.3.0] - 2025-12-08
 
