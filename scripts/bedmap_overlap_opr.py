@@ -12,7 +12,7 @@ import pandas as pd
 import shapely.geometry
 
 # %%
-# Load BedMAP2 data
+# Load BedMAP2 catalog, filter/query by institution
 store = obs.store.from_url(url="https://data.source.coop/englacial/bedmap/")
 result = await store.get_async(path="bedmap2.parquet")
 bytes = await result.bytes_async()
@@ -34,7 +34,7 @@ print(gdf_cresis[["name"]])
 # 36  NASA_2012_ICEBRIDGE_AIR_BM2  # CRESIS+
 
 # %%
-# Load OPR data
+# Load OPR catalog
 store = obs.store.from_url(
     url="s3://us-west-2.opendata.source.coop/englacial/xopr/catalog/hemisphere=south",
     skip_signature=True,
@@ -70,37 +70,32 @@ for batch in stream:
 # %%
 # Determine overlap data for years 2002, 2004, 2009, 2010, 2011, 2012
 for year in [2002, 2004, 2009, 2010, 2011, 2012]:
-    # OPR
-    gdf_cresis_ = gdf_cresis.query(expr=f"name.str.contains('{year}')").to_crs(
-        epsg=3031
-    )
-    assert len(gdf_cresis_) == 1
-    gdf_cresis_.to_file(filename=f"data/cresis_{year}.gpkg")
-    gdf_cresis.plot()
+    # BedMAP2
+    gdf_bedmap = gdf_cresis.query(expr=f"name.str.contains('{year}')").to_crs(epsg=3031)
+    assert len(gdf_bedmap) == 1  ## always 1
+    gdf_bedmap.to_file(filename=f"data/bedmap_{year}.gpkg")
 
-    # Bedmap2
+    # OPR
     prefix: list = [p for p in prefixes if str(year) in p]
-    assert len(prefix) == 1
+    assert len(prefix) == 1  # TODO could be more than 1
     result = await store.get_async(path=prefix[0])
     bytes = await result.bytes_async()
-    gdf_bedmap_: gpd.GeoDataFrame = gpd.read_parquet(path=io.BytesIO(bytes)).to_crs(
+    gdf_opr: gpd.GeoDataFrame = gpd.read_parquet(path=io.BytesIO(bytes)).to_crs(
         epsg=3031
     )
-    assert len(gdf_bedmap_) >= 1
+    assert len(gdf_opr) >= 1
 
     # Fuzzy match using Hausdorff distance
-    geom_references: shapely.geometry.MultiLineString = gdf_cresis_.iloc[0].geometry
-    gdf_bedmap_["hausdorff_dist"] = pd.DataFrame(
+    geom_references: shapely.geometry.MultiLineString = gdf_bedmap.iloc[0].geometry
+    gdf_opr["hausdorff_dist"] = pd.DataFrame(
         # Break multilinestring into individual linestring segments, then
         # calculate hausdorff distance for each bedmap segment against opr segments
-        data=(
-            gdf_bedmap_.hausdorff_distance(other=geom) for geom in geom_references.geoms
-        )
+        data=(gdf_opr.hausdorff_distance(other=geom) for geom in geom_references.geoms)
     ).min()  # take minimum hausdorff distance from one-to-one bedmap/opr matches
-    # gdf_bedmap_["frechet_dist"] = gdf_bedmap_.frechet_distance(other=geom_reference)
-    gdf_bedmap_.to_file(filename=f"data/bedmap_{year}.gpkg", mode="w")
+    gdf_opr.to_file(filename=f"data/opr_{year}.gpkg", mode="w")
 
     # Report Bedmap IDs and their hausdorff distance to nearest OPR line segment
-    print(gdf_bedmap_[["id", "hausdorff_dist"]].sort_values(by="hausdorff_dist"))
+    gdf_oprsorted = gdf_opr[["id", "hausdorff_dist"]].sort_values(by="hausdorff_dist")
+    print(gdf_oprsorted)
 
     break  # TODO work on more years
