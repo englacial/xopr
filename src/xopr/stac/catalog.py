@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pystac
 import stac_geoparquet
@@ -490,11 +491,29 @@ def export_collection_to_parquet(
     # Convert items to Arrow format
     record_batch_reader = stac_geoparquet.arrow.parse_stac_items_to_arrow(clean_items)
 
+    # When all items have empty links arrays, PyArrow infers the column type
+    # as list<null> which downstream tools (e.g. stac-wasm) cannot
+    # deserialize. Cast to the correct STAC link struct type.
+    table = record_batch_reader.read_all()
+    links_field = table.schema.field('links')
+    if pa.types.is_null(links_field.type.value_type):
+        links_type = pa.list_(pa.struct([
+            ('href', pa.string()),
+            ('rel', pa.string()),
+            ('type', pa.string()),
+        ]))
+        links_idx = table.schema.get_field_index('links')
+        table = table.set_column(
+            links_idx,
+            pa.field('links', links_type),
+            table.column('links').cast(links_type),
+        )
+
     # Write to Parquet with collection metadata
     # Note: Using collection_metadata for compatibility with stac-geoparquet 0.7.0
     # In newer versions (>0.8), this should be 'collections' parameter
     stac_geoparquet.arrow.to_parquet(
-        table=record_batch_reader,
+        table=table,
         output_path=parquet_file,
         collection_metadata=collection_dict,  # Single collection metadata (cleaned)
         schema_version="1.1.0",  # Use latest schema version
