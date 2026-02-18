@@ -272,7 +272,7 @@ def create_items_from_flight_data(
                     assets['data'] = assets[data_product_type]
 
         thumb_href = base_url + f"{campaign_name}/images/{flight_id}/{flight_id}_{frame}_2echo_picks.jpg"
-        assets['thumbnails'] = pystac.Asset(
+        assets['thumbnail'] = pystac.Asset(
             href=thumb_href,
             media_type=pystac.MediaType.JPEG
         )
