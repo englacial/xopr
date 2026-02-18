@@ -1,10 +1,11 @@
 """
-Find overlapping Bedmap and OPR lines.
+Find overlapping BedMap and OPR lines.
 
-Uses hausdorff distance metric for fuzzy matching of linestrings.
+Uses custom logic for exact matching of OPR linestrings to BedMap points.
 """
 
 import io
+import re
 import os
 
 import geopandas as gpd
@@ -86,7 +87,20 @@ for batch in stream:
 
 # %%
 # Determine overlap data for years 2002, 2004, 2009, 2010, 2011, 2012
-for year in [2002, 2004, 2009, 2010, 2011, 2012]:
+for prefix in prefixes:
+    collection_shortname: str = re.findall(
+        pattern=r"collection=(.*)\/stac\.parquet", string=prefix
+    )[0]
+    print(f"Processing {collection_shortname}")
+    year: int = int(re.findall(pattern=r"collection=(.*)_Antarctica", string=prefix)[0])
+
+    # OPR (dense XY points)
+    gdf_opr: gpd.GeoDataFrame = (
+        await aio_read_parquet(store=store, path=prefix)
+    ).to_crs(epsg=3031)
+    gdf_opr = gdf_opr.sort_values(by="datetime").reset_index(drop=True)
+    assert len(gdf_opr) >= 1
+
     # BedMAP2 (simplified/sparse points)
     gdf_bedmap = gdf_cresis.query(expr=f"name.str.contains('{year}')").to_crs(epsg=3031)
     assert len(gdf_bedmap) == 1  # always 1
@@ -96,21 +110,15 @@ for year in [2002, 2004, 2009, 2010, 2011, 2012]:
     gdf_bedmap_dense = (await aio_read_parquet(store=store, path=path)).to_crs(
         epsg=3031
     )
-    gdf_bedmap_dense = gdf_bedmap_dense.set_index(keys="trajectory_id")
-    gdf_bedmap_dense.index = gdf_bedmap_dense.index.astype(dtype=pd.UInt32Dtype())
-    gdf_bedmap_dense["opr_id"] = pd.Series(dtype=pd.StringDtype())  # Set new column
+    gdf_bedmap_dense = gdf_bedmap_dense.sort_values(by="timestamp").reset_index(
+        drop=True
+    )
+    # gdf_bedmap_dense = gdf_bedmap_dense.set_index(keys="trajectory_id")
+    # gdf_bedmap_dense.index = gdf_bedmap_dense.index.astype(dtype=pd.UInt64Dtype())
+    gdf_bedmap_dense["opr_id"] = pd.Series(dtype=pd.StringDtype())  # Empty new column
     # .set_crs(crs="OGC:CRS84", allow_override=True)
-    gdf_bedmap_dense.to_file(filename := f"data/{os.path.basename(path)}.gpkg")
-    print(f"Saved dense BedMAP points to {filename}")
-
-    # OPR (dense XY points)
-    prefix: list = [p for p in prefixes if str(year) in p]
-    assert len(prefix) == 1  # TODO could be more than 1
-    gdf_opr: gpd.GeoDataFrame = (
-        await aio_read_parquet(store=store, path=prefix[0])
-    ).to_crs(epsg=3031)
-    gdf_opr = gdf_opr.sort_values(by="datetime")
-    assert len(gdf_opr) >= 1
+    # gdf_bedmap_dense.to_file(filename := f"data/{os.path.basename(path)}.gpkg")
+    # print(f"Saved dense BedMAP points (unlabelled) to {filename}")
 
     # Loop over dense OPR line segments, find matching dense BedMAP points
     assert gdf_opr.crs == gdf_bedmap_dense.crs
@@ -127,14 +135,22 @@ for year in [2002, 2004, 2009, 2010, 2011, 2012]:
             else:
                 head = int(seg_match.head(n=1).index[0])
                 tail = int(seg_match.tail(n=1).index[0])
-                gdf_.loc[head:tail].plot(ylabel="distance (m)")
+                # gdf_.loc[head:tail].plot(ylabel="distance (m)")
 
                 # Ensure all BedMAP points in series are <200m away from OPR segment
                 if not all(gdf_.loc[head:tail] < 200):
-                    print(
-                        f"Increasing tolerance for {segment.id}, narrowing between {head}:{tail}"
-                    )
-                    continue
+                    if gdf_.loc[head:tail].median() > 200:
+                        # most points too distant, skip
+                        print(f"Failed to match OPR segment {segment.id}")
+                        break
+                    else:  # another chance
+                        print(
+                            f"Decreasing tolerance for {segment.id}, narrowing between {head}:{tail}"
+                        )
+                        continue
+                elif head == tail:  # only one point, cannot be a segment
+                    print(f"Failed to match OPR segment {segment.id}")
+                    break
                 else:
                     print(
                         f"🙌 OPR segment {segment.id} matches BedMap points {head}:{tail}"
@@ -146,4 +162,5 @@ for year in [2002, 2004, 2009, 2010, 2011, 2012]:
     gdf_bedmap_dense.to_file(filename := f"data/{basename}.gpkg")
     print(f"Saved dense BedMAP points labelled with OPR ids to {filename}")
 
-    break  # TODO work on more years
+    # break  # TODO work on more years
+print("Done!")
