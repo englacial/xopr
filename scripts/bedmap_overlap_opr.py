@@ -87,30 +87,63 @@ for batch in stream:
 # %%
 # Determine overlap data for years 2002, 2004, 2009, 2010, 2011, 2012
 for year in [2002, 2004, 2009, 2010, 2011, 2012]:
-    # BedMAP2
+    # BedMAP2 (simplified/sparse points)
     gdf_bedmap = gdf_cresis.query(expr=f"name.str.contains('{year}')").to_crs(epsg=3031)
-    assert len(gdf_bedmap) == 1  ## always 1
-    gdf_bedmap.to_file(filename=f"data/bedmap_{year}.gpkg")
+    assert len(gdf_bedmap) == 1  # always 1
 
-    # OPR
+    # BedMAP2 (dense XY points)
+    path = gdf_bedmap.asset_href.iloc[0].replace("gs://opr_stac/bedmap/", "bedmap/")
+    gdf_bedmap_dense = (await aio_read_parquet(store=store, path=path)).to_crs(
+        epsg=3031
+    )
+    gdf_bedmap_dense = gdf_bedmap_dense.set_index(keys="trajectory_id")
+    gdf_bedmap_dense.index = gdf_bedmap_dense.index.astype(dtype=pd.UInt32Dtype())
+    gdf_bedmap_dense["opr_id"] = pd.Series(dtype=pd.StringDtype())  # Set new column
+    # .set_crs(crs="OGC:CRS84", allow_override=True)
+    gdf_bedmap_dense.to_file(filename := f"data/{os.path.basename(path)}.gpkg")
+    print(f"Saved dense BedMAP points to {filename}")
+
+    # OPR (dense XY points)
     prefix: list = [p for p in prefixes if str(year) in p]
     assert len(prefix) == 1  # TODO could be more than 1
     gdf_opr: gpd.GeoDataFrame = (
         await aio_read_parquet(store=store, path=prefix[0])
     ).to_crs(epsg=3031)
+    gdf_opr = gdf_opr.sort_values(by="datetime")
     assert len(gdf_opr) >= 1
 
-    # Fuzzy match using Hausdorff distance
-    geom_references: shapely.geometry.MultiLineString = gdf_bedmap.iloc[0].geometry
-    gdf_opr["hausdorff_dist"] = pd.DataFrame(
-        # Break multilinestring into individual linestring segments, then
-        # calculate hausdorff distance for each bedmap segment against opr segments
-        data=(gdf_opr.hausdorff_distance(other=geom) for geom in geom_references.geoms)
-    ).min()  # take minimum hausdorff distance from one-to-one bedmap/opr matches
-    gdf_opr.to_file(filename=f"data/opr_{year}.gpkg", mode="w")
+    # Loop over dense OPR line segments, find matching dense BedMAP points
+    assert gdf_opr.crs == gdf_bedmap_dense.crs
+    for segment in gdf_opr.itertuples():
+        gdf_unlabelled = gdf_bedmap_dense[~gdf_bedmap_dense.opr_id.notna()]
+        # Get cartesian distance from all unlabelled BedMAP points to OPR line
+        gdf_ = gdf_unlabelled.distance(other=segment.geometry)
 
-    # Report Bedmap IDs and their hausdorff distance to nearest OPR line segment
-    gdf_oprsorted = gdf_opr[["id", "hausdorff_dist"]].sort_values(by="hausdorff_dist")
-    print(gdf_oprsorted)
+        for tolerance in (0.8, 0.4, 0.2):  # match pass on <X metre to line
+            seg_match = gdf_[gdf_ < tolerance].drop_duplicates()
+            if len(seg_match) == 0:
+                print(f"Failed to match OPR segment {segment.id}")
+                break
+            else:
+                head = int(seg_match.head(n=1).index[0])
+                tail = int(seg_match.tail(n=1).index[0])
+                gdf_.loc[head:tail].plot(ylabel="distance (m)")
+
+                # Ensure all BedMAP points in series are <200m away from OPR segment
+                if not all(gdf_.loc[head:tail] < 200):
+                    print(
+                        f"Increasing tolerance for {segment.id}, narrowing between {head}:{tail}"
+                    )
+                    continue
+                else:
+                    print(
+                        f"🙌 OPR segment {segment.id} matches BedMap points {head}:{tail}"
+                    )
+                    gdf_bedmap_dense.loc[head:tail, "opr_id"] = segment.id  # label
+                    break
+
+    basename = os.path.basename(path).replace(".parquet", "")
+    gdf_bedmap_dense.to_file(filename := f"data/{basename}.gpkg")
+    print(f"Saved dense BedMAP points labelled with OPR ids to {filename}")
 
     break  # TODO work on more years
