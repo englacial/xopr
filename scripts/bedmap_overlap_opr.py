@@ -5,19 +5,34 @@ Uses hausdorff distance metric for fuzzy matching of linestrings.
 """
 
 import io
+import os
 
 import geopandas as gpd
 import obstore as obs
 import pandas as pd
 import shapely.geometry
 
+
+# %%
+async def aio_read_parquet(store: obs.store.ObjectStore, path: str) -> gpd.GeoDataFrame:
+    """
+    Read parquet file from remote object storage using obstore and geopandas.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+
+    """
+    result = await store.get_async(path=path)
+    bytes_ = await result.bytes_async()
+    gdf: gpd.GeoDataFrame = gpd.read_parquet(path=io.BytesIO(bytes_))
+    return gdf
+
+
 # %%
 # Load BedMAP2 catalog, filter/query by institution
 store = obs.store.from_url(url="https://data.source.coop/englacial/bedmap/")
-result = await store.get_async(path="bedmap2.parquet")
-bytes = await result.bytes_async()
-
-gdf: gpd.GeoDataFrame = gpd.read_parquet(path=io.BytesIO(bytes))
+gdf: gpd.GeoDataFrame = await aio_read_parquet(store=store, path="bedmap2.parquet")
 gdf.institution.unique()
 
 gdf_cresis = gdf.query(
@@ -36,11 +51,13 @@ print(gdf_cresis[["name"]])
 # %%
 # Load OPR catalog
 store = obs.store.from_url(
-    url="s3://us-west-2.opendata.source.coop/englacial/xopr/catalog/hemisphere=south",
+    url="s3://us-west-2.opendata.source.coop/englacial/",
     skip_signature=True,
     region="us-west-2",
 )
-stream = obs.list(store=store, prefix="provider=cresis", chunk_size=1)
+stream = obs.list(
+    store=store, prefix="xopr/catalog/hemisphere=south/provider=cresis", chunk_size=1
+)
 prefixes: list[str] = []
 for batch in stream:
     collection: str = batch[0]["path"]
@@ -78,11 +95,9 @@ for year in [2002, 2004, 2009, 2010, 2011, 2012]:
     # OPR
     prefix: list = [p for p in prefixes if str(year) in p]
     assert len(prefix) == 1  # TODO could be more than 1
-    result = await store.get_async(path=prefix[0])
-    bytes = await result.bytes_async()
-    gdf_opr: gpd.GeoDataFrame = gpd.read_parquet(path=io.BytesIO(bytes)).to_crs(
-        epsg=3031
-    )
+    gdf_opr: gpd.GeoDataFrame = (
+        await aio_read_parquet(store=store, path=prefix[0])
+    ).to_crs(epsg=3031)
     assert len(gdf_opr) >= 1
 
     # Fuzzy match using Hausdorff distance
