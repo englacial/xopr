@@ -5,12 +5,16 @@ Uses custom logic for exact matching of OPR linestrings to BedMap points.
 """
 
 import io
-import re
 import os
+import re
+import tempfile
+import urllib.request
 
 import geopandas as gpd
 import obstore as obs
 import pandas as pd
+import pyproj
+import scipy.io
 import shapely.geometry
 
 
@@ -28,6 +32,39 @@ async def aio_read_parquet(store: obs.store.ObjectStore, path: str) -> gpd.GeoDa
     bytes_ = await result.bytes_async()
     gdf: gpd.GeoDataFrame = gpd.read_parquet(path=io.BytesIO(bytes_))
     return gdf
+
+
+# %%
+transformer = pyproj.Transformer.from_crs(
+    crs_from="OGC:CRS84", crs_to="EPSG:3031", always_xy=True
+)
+
+
+def mat_to_linestring(url: str) -> shapely.geometry.LineString:
+    """
+    Read .mat file from CReSIS containing OPR data in Lon/Lat, and reproject to an
+    Antarctic Polar Stereographic (EPSG:3031) linestring.
+
+    Returns
+    -------
+    shapely.geometry.LineString
+
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mat_fpath = os.path.basename(p := url)  # e.g. Data_20101026_01_001.mat
+        file_name = os.path.join(tmpdir, mat_fpath)
+        urllib.request.urlretrieve(url=p, filename=file_name)  # download to tempfile
+        dat = scipy.io.loadmat(file_name=file_name)
+
+        return shapely.geometry.LineString(
+            gpd.points_from_xy(
+                *transformer.transform(
+                    xx=dat["Longitude"].squeeze(),
+                    yy=dat["Latitude"].squeeze(),
+                ),
+                crs="EPSG:3031",
+            )
+        )
 
 
 # %%
@@ -91,10 +128,12 @@ for prefix in prefixes:
     collection_shortname: str = re.findall(
         pattern=r"collection=(.*)\/stac\.parquet", string=prefix
     )[0]
-    print(f"Processing {collection_shortname}")
     year: int = int(re.findall(pattern=r"collection=(.*)_Antarctica", string=prefix)[0])
+    if "_DC8" not in collection_shortname or "_P3" not in collection_shortname:
+        continue
+    print(f"Processing {collection_shortname}")
 
-    # OPR (dense XY points)
+    # OPR (sparse XY points)
     gdf_opr: gpd.GeoDataFrame = (
         await aio_read_parquet(store=store, path=prefix)
     ).to_crs(epsg=3031)
@@ -124,39 +163,50 @@ for prefix in prefixes:
     assert gdf_opr.crs == gdf_bedmap_dense.crs
     for segment in gdf_opr.itertuples():
         gdf_unlabelled = gdf_bedmap_dense[~gdf_bedmap_dense.opr_id.notna()]
-        # Get cartesian distance from all unlabelled BedMAP points to OPR line
-        gdf_ = gdf_unlabelled.distance(other=segment.geometry)
+        # Get cartesian distance from all unlabelled BedMAP points to sparse OPR line
+        gdf_: pd.Series = gdf_unlabelled.distance(other=segment.geometry)
 
-        for tolerance in (0.8, 0.4, 0.2):  # match pass on <X metre to line
-            seg_match = gdf_[gdf_ < tolerance].drop_duplicates()
+        tolerance: float = 0.4
+        seg_match: pd.Series = gdf_[gdf_ < tolerance].drop_duplicates()
+
             if len(seg_match) == 0:
-                print(f"Failed to match OPR segment {segment.id}")
-                break
-            else:
+            print(f"Failed to match OPR segment {segment.id}, reason: no matches")
+            continue
+        elif len(seg_match) == 1:  # only one point, cannot be a segment
+            print(f"Failed to match OPR segment {segment.id}, reason: only 1 point")
+            continue
+        else:  # >=2, potentially have match
                 head = int(seg_match.head(n=1).index[0])
                 tail = int(seg_match.tail(n=1).index[0])
                 # gdf_.loc[head:tail].plot(ylabel="distance (m)")
 
-                # Ensure all BedMAP points in series are <200m away from OPR segment
-                if not all(gdf_.loc[head:tail] < 200):
-                    if gdf_.loc[head:tail].median() > 200:
-                        # most points too distant, skip
-                        print(f"Failed to match OPR segment {segment.id}")
-                        break
-                    else:  # another chance
+            # Fast match against sparse OPR points (if everything less than 200m away..)
+            if all(gdf_.loc[head:tail] < 200):
+                print(
+                    f"🙌 OPR segment {segment.id} matches BedMap points {head}:{tail}"
+                )
+            else:
+                print(f"Trying to match segment {segment.id} with dense points")
+
+                # OPR (dense XY points)
+                opr_dense_geom = mat_to_linestring(url=segment.assets["data"]["href"])
+                seg_match_dense: pd.Series = gdf_unlabelled.loc[head:tail].distance(
+                    other=opr_dense_geom
+                )
+                # seg_match_dense.plot(ylabel="distance (m)")
+
+                # Ensure all BedMAP points in series are <1m away from OPR segment
+                if not all(seg_match_dense < 1.0):
                         print(
-                            f"Decreasing tolerance for {segment.id}, narrowing between {head}:{tail}"
+                        f"Failed to match OPR segment {segment.id}, reason: too many distant points"
                         )
                         continue
-                elif head == tail:  # only one point, cannot be a segment
-                    print(f"Failed to match OPR segment {segment.id}")
-                    break
                 else:
                     print(
                         f"🙌 OPR segment {segment.id} matches BedMap points {head}:{tail}"
                     )
                     gdf_bedmap_dense.loc[head:tail, "opr_id"] = segment.id  # label
-                    break
+                    continue
 
     basename = os.path.basename(path).replace(".parquet", "")
     gdf_bedmap_dense.to_file(filename := f"data/{basename}.gpkg")
