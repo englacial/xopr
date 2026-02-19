@@ -183,10 +183,12 @@ for prefix in prefixes:
             # Fast match against sparse OPR points (if everything less than 200m away..)
             if all(gdf_.loc[head:tail] < 200):
                 print(
-                    f"🙌 OPR segment {segment.id} matches BedMap points {head}:{tail}"
+                    f"🙌 OPR segment {segment.id} matches BedMap points {head}:{tail} (fast)"
                 )
             else:
-                print(f"Trying to match segment {segment.id} with dense points")
+                print(
+                    f"Trying to match segment {segment.id} with dense points for range {head}:{tail}"
+                )
 
                 # OPR (dense XY points)
                 opr_dense_geom = mat_to_linestring(url=segment.assets["data"]["href"])
@@ -197,13 +199,27 @@ for prefix in prefixes:
 
                 # Ensure all BedMAP points in series are <1m away from OPR segment
                 if not all(seg_match_dense < 1.0):
+                    # Try and narrow down segments once more with stricter tolerance
+                    tolerance_ = 0.005
+                    seg_match_new: pd.Series = seg_match_dense[
+                        seg_match_dense < tolerance_
+                    ].drop_duplicates()
+                    seg_match_new.plot(ylabel="distance (m)")
+                    head_ = int(seg_match_new.head(n=1).index[0])
+                    tail_ = int(seg_match_new.tail(n=1).index[0])
+                    seg_match_dense.loc[head_:tail_].plot()
+                    if all(seg_match_dense.loc[head_:tail_] < 0.5):
                         print(
-                        f"Failed to match OPR segment {segment.id}, reason: too many distant points"
+                            f"🙌 OPR segment {segment.id} matches BedMap points {head_}:{tail_} (slow)"
                         )
                         continue
+                    else:
+                        print(
+                            f"Failed to match OPR segment {segment.id}, reason: too many distant points"
+                        )
                 else:
                     print(
-                        f"🙌 OPR segment {segment.id} matches BedMap points {head}:{tail}"
+                        f"🙌 OPR segment {segment.id} matches BedMap points {head}:{tail} (slow)"
                     )
                     gdf_bedmap_dense.loc[head:tail, "opr_id"] = segment.id  # label
                     continue
