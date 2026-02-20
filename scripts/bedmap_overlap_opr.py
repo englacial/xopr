@@ -68,9 +68,11 @@ def mat_to_linestring(url: str) -> shapely.geometry.LineString:
 
 
 # %%
-# Load BedMAP2 catalog, filter/query by institution
+# Load BedMap2 and BedMap3 catalog, filter/query by institution
 store = obs.store.from_url(url="https://data.source.coop/englacial/bedmap/")
-gdf: gpd.GeoDataFrame = await aio_read_parquet(store=store, path="bedmap2.parquet")
+gdf_bm2: gpd.GeoDataFrame = await aio_read_parquet(store=store, path="bedmap2.parquet")
+gdf_bm3: gpd.GeoDataFrame = await aio_read_parquet(store=store, path="bedmap3.parquet")
+gdf: gpd.GeoDataFrame = pd.concat(objs=[gdf_bm2, gdf_bm3], ignore_index=True)
 gdf.institution.unique()
 
 gdf_cresis = gdf.query(
@@ -78,13 +80,23 @@ gdf_cresis = gdf.query(
 )
 len(gdf_cresis)
 print(gdf_cresis[["name"]])
-#                            name
-# 31  NASA_2002_ICEBRIDGE_AIR_BM2  # CRESIS+
-# 32  NASA_2004_ICEBRIDGE_AIR_BM2
-# 33  NASA_2009_ICEBRIDGE_AIR_BM2
-# 34  NASA_2010_ICEBRIDGE_AIR_BM2
-# 35  NASA_2011_ICEBRIDGE_AIR_BM2
-# 36  NASA_2012_ICEBRIDGE_AIR_BM2  # CRESIS+
+#                                  name
+# 31        NASA_2002_ICEBRIDGE_AIR_BM2
+# 32        NASA_2004_ICEBRIDGE_AIR_BM2
+# 33        NASA_2009_ICEBRIDGE_AIR_BM2
+# 34        NASA_2010_ICEBRIDGE_AIR_BM2
+# 35        NASA_2011_ICEBRIDGE_AIR_BM2
+# 36        NASA_2012_ICEBRIDGE_AIR_BM2
+# 88   CRESIS_2009_AntarcticaTO_AIR_BM3
+# 89       CRESIS_2009_Thwaites_AIR_BM3
+# 90    CRESIS_2013_Siple-Coast_AIR_BM3
+# 98        NASA_2013_ICEBRIDGE_AIR_BM3
+# 99        NASA_2014_ICEBRIDGE_AIR_BM3
+# 100       NASA_2016_ICEBRIDGE_AIR_BM3
+# 101       NASA_2017_ICEBRIDGE_AIR_BM3
+# 102       NASA_2018_ICEBRIDGE_AIR_BM3
+# 103       NASA_2019_ICEBRIDGE_AIR_BM3
+
 
 # %%
 # Load OPR catalog
@@ -96,12 +108,16 @@ store = obs.store.from_url(
 stream = obs.list(
     store=store, prefix="xopr/catalog/hemisphere=south/provider=cresis", chunk_size=1
 )
-prefixes: list[str] = []
+prefixes: dict[str, str] = {}
 for batch in stream:
-    collection: str = batch[0]["path"]
-    print(collection)
-    prefixes.append(collection)
-
+    prefix: str = batch[0]["path"]
+    shortname: str = re.findall(
+        pattern=r"collection=(.*)\/stac\.parquet", string=prefix
+    )[0]
+    if "2024_" not in shortname:  # skip 2024_Antarctica_GroundGHOST2
+        prefixes[shortname] = prefix
+for prefix in prefixes.values():
+    print(prefix)
 # provider=cresis/collection=2002_Antarctica_P3chile/stac.parquet
 # provider=cresis/collection=2004_Antarctica_P3chile/stac.parquet
 # provider=cresis/collection=2009_Antarctica_DC8/stac.parquet
@@ -120,18 +136,32 @@ for batch in stream:
 # provider=cresis/collection=2018_Antarctica_DC8/stac.parquet
 # provider=cresis/collection=2018_Antarctica_Ground/stac.parquet
 # provider=cresis/collection=2019_Antarctica_GV/stac.parquet
-# provider=cresis/collection=2024_Antarctica_GroundGHOST2/stac.parquet
 
 # %%
 # Determine overlap data for years 2002, 2004, 2009, 2010, 2011, 2012
-for prefix in prefixes:
-    collection_shortname: str = re.findall(
-        pattern=r"collection=(.*)\/stac\.parquet", string=prefix
-    )[0]
+# | BedMap2 | OPR |
+# |---------|-----|
+# | NASA_2002_ICEBRIDGE_AIR_BM2 | 2002_Antarctica_P3chile |
+# | NASA_2004_ICEBRIDGE_AIR_BM2 | 2004_Antarctica_P3chile |
+# | NASA_2009_ICEBRIDGE_AIR_BM2 | 2009_Antarctica_DC8 |
+# | NASA_2010_ICEBRIDGE_AIR_BM2 | 2010_Antarctica_DC8 |
+# | NASA_2011_ICEBRIDGE_AIR_BM2 | 2011_Antarctica_DC8 |
+# | NASA_2012_ICEBRIDGE_AIR_BM2 | 2012_Antarctica_DC8 |
+#
+# | BedMap3 | OPR |
+# |---------|-----|
+# | CRESIS_2009_AntarcticaTO_AIR_BM3 | 2009_Antarctica_TO_Gambit|
+# | CRESIS_2009_Thwaites_AIR_BM3     | 2009_Antarctica_TO |
+# | CRESIS_2013_Siple-Coast_AIR_BM3  | 2013_Antarctica_Basler |
+# | NASA_2013_ICEBRIDGE_AIR_BM3 | 2013_Antarctica_P3 |
+# | NASA_2014_ICEBRIDGE_AIR_BM3 | 2014_Antarctica_DC8 |
+# | NASA_2016_ICEBRIDGE_AIR_BM3 | 2016_Antarctica_DC8 |
+# | NASA_2017_ICEBRIDGE_AIR_BM3 | 2017_Antarctica_Basler |
+# | NASA_2018_ICEBRIDGE_AIR_BM3 | 2018_Antarctica_DC8 |
+# | NASA_2019_ICEBRIDGE_AIR_BM3 | 2019_Antarctica_GV |
+for shortname, prefix in reversed(prefixes.items()):  # reverse chronological loop
     year: int = int(re.findall(pattern=r"collection=(.*)_Antarctica", string=prefix)[0])
-    if "_DC8" not in collection_shortname or "_P3" not in collection_shortname:
-        continue
-    print(f"Processing {collection_shortname}")
+    print(f"Processing OPR campaign: {shortname}")
 
     # OPR (sparse XY points)
     gdf_opr: gpd.GeoDataFrame = (
