@@ -71,7 +71,7 @@ class TestSTACValidation:
         collection_dict = collection.to_dict()
         validator = StacValidate()
         result = validator.validate_dict(collection_dict)
-        assert result is True, f"create_collection() produced invalid collection"
+        assert result is True, "create_collection() produced invalid collection"
 
     def test_validate_create_item(self):
         """Test that items created by create_item() are valid."""
@@ -93,7 +93,7 @@ class TestSTACValidation:
         )
 
         result = self._validate_stac_via_file(item)
-        assert result is True, f"create_item() produced invalid item"
+        assert result is True, "create_item() produced invalid item"
 
     @patch('xopr.stac.catalog.compute_mbox', return_value=[1, 2, 3, 4])
     @patch('xopr.stac.catalog.extract_item_metadata')
@@ -138,7 +138,7 @@ class TestSTACValidation:
         items = create_items_from_flight_data(flight_data, config)
         for item in items:
             result = self._validate_stac_via_file(item)
-            assert result is True, f"create_items_from_flight_data() with no extensions produced invalid item"
+            assert result is True, "create_items_from_flight_data() with no extensions produced invalid item"
 
         # Test with scientific extension only
         mock_extract.return_value = create_mock_metadata(
@@ -148,7 +148,7 @@ class TestSTACValidation:
         items = create_items_from_flight_data(flight_data, config)
         for item in items:
             result = self._validate_stac_via_file(item)
-            assert result is True, f"create_items_from_flight_data() with scientific extension produced invalid item"
+            assert result is True, "create_items_from_flight_data() with scientific extension produced invalid item"
 
         # Test with SAR extension only
         mock_extract.return_value = create_mock_metadata(
@@ -158,7 +158,7 @@ class TestSTACValidation:
         items = create_items_from_flight_data(flight_data, config)
         for item in items:
             result = self._validate_stac_via_file(item)
-            assert result is True, f"create_items_from_flight_data() with SAR extension produced invalid item"
+            assert result is True, "create_items_from_flight_data() with SAR extension produced invalid item"
 
         # Test with both extensions
         mock_extract.return_value = create_mock_metadata(
@@ -168,7 +168,7 @@ class TestSTACValidation:
         items = create_items_from_flight_data(flight_data, config)
         for item in items:
             result = self._validate_stac_via_file(item)
-            assert result is True, f"create_items_from_flight_data() with both extensions produced invalid item"
+            assert result is True, "create_items_from_flight_data() with both extensions produced invalid item"
 
     def test_validate_catalog_with_metadata_aggregation(self):
         """Test that catalogs using collect_uniform_metadata produce valid STAC with proper metadata."""
@@ -227,7 +227,7 @@ class TestSTACValidation:
         collection_dict = collection.to_dict()
         validator = StacValidate()
         result = validator.validate_dict(collection_dict)
-        assert result is True, f"Collection with collect_uniform_metadata produced invalid STAC"
+        assert result is True, "Collection with collect_uniform_metadata produced invalid STAC"
 
         # Verify that metadata was properly aggregated
         sci_ext = 'https://stac-extensions.github.io/scientific/v1.0.0/schema.json'

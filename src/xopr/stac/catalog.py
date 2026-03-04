@@ -222,9 +222,6 @@ def create_items_from_flight_data(
         bbox = list(metadata['bbox'].bounds)
         datetime = metadata['date']
 
-        rel_mat_path = f"{campaign_name}/{primary_data_product}/{flight_id}/{data_path.name}"
-        data_href = base_url + rel_mat_path
-
         # Extract frame number from MAT filename (e.g., "Data_20161014_03_001.mat" -> "001")
         frame_match = re.search(r'_(\d+)\.mat$', data_path.name)
         frame = frame_match.group(1)
@@ -488,10 +485,6 @@ def export_collection_to_parquet(
             link for link in collection_dict['links']
             if not (link.get('rel') == 'item' and link.get('href') is None)
         ]
-    collections_dict = {
-        collection.id: collection_dict
-    }
-
     # Clean items and add xopr metadata before export
     clean_items = []
     for item in collection_items:
