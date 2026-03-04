@@ -7,6 +7,7 @@ import numpy as np
 from xopr.stac.catalog import create_items_from_flight_data
 
 from .common import (
+    OPR_EXT,
     SAR_EXT,
     SCI_EXT,
     TEST_CITATION,
@@ -20,8 +21,9 @@ from .common import (
 class TestCreateItemsFromFlightData:
     """Test the create_items_from_flight_data function."""
 
+    @patch('xopr.stac.catalog.compute_mbox', return_value=[1, 2, 3, 4])
     @patch('xopr.stac.catalog.extract_item_metadata')
-    def test_items_without_scientific_metadata(self, mock_extract):
+    def test_items_without_scientific_metadata(self, mock_extract, mock_mbox):
         """Test that SCI_EXT is not added when doi and citation are None."""
         # Setup
         mock_extract.return_value = create_mock_metadata(doi=None, citation=None)
@@ -47,8 +49,9 @@ class TestCreateItemsFromFlightData:
         # SAR extension should not be present (moved to opr namespace)
         assert SAR_EXT not in item.stac_extensions
 
+    @patch('xopr.stac.catalog.compute_mbox', return_value=[1, 2, 3, 4])
     @patch('xopr.stac.catalog.extract_item_metadata')
-    def test_items_with_doi_only(self, mock_extract):
+    def test_items_with_doi_only(self, mock_extract, mock_mbox):
         """Test that SCI_EXT is added when doi exists but citation is None."""
         # Setup
         mock_extract.return_value = create_mock_metadata(doi=TEST_DOI, citation=None)
@@ -68,8 +71,9 @@ class TestCreateItemsFromFlightData:
         # Should have scientific extension
         assert SCI_EXT in item.stac_extensions
 
+    @patch('xopr.stac.catalog.compute_mbox', return_value=[1, 2, 3, 4])
     @patch('xopr.stac.catalog.extract_item_metadata')
-    def test_items_with_citation_only(self, mock_extract):
+    def test_items_with_citation_only(self, mock_extract, mock_mbox):
         """Test that SCI_EXT is added when citation exists but doi is None."""
         # Setup
         mock_extract.return_value = create_mock_metadata(doi=None, citation=TEST_CITATION)
@@ -89,8 +93,9 @@ class TestCreateItemsFromFlightData:
         # Should have scientific extension
         assert SCI_EXT in item.stac_extensions
 
+    @patch('xopr.stac.catalog.compute_mbox', return_value=[1, 2, 3, 4])
     @patch('xopr.stac.catalog.extract_item_metadata')
-    def test_items_with_both_doi_and_citation(self, mock_extract):
+    def test_items_with_both_doi_and_citation(self, mock_extract, mock_mbox):
         """Test that SCI_EXT is added when both doi and citation exist."""
         # Setup
         mock_extract.return_value = create_mock_metadata(doi=TEST_DOI, citation=TEST_CITATION)
@@ -124,9 +129,10 @@ class TestCreateItemsFromFlightData:
         # Assertions
         assert len(items) == 0  # No items should be created
 
+    @patch('xopr.stac.catalog.compute_mbox', return_value=[1, 2, 3, 4])
     @patch('xopr.stac.catalog.extract_item_metadata')
-    def test_opr_properties_as_python_types(self, mock_extract):
-        """Test that OPR radar properties are stored as Python float types."""
+    def test_opr_properties_as_python_types(self, mock_extract, mock_mbox):
+        """Test that OPR radar properties are stored as Python int types."""
         # Setup
         mock_extract.return_value = create_mock_metadata()
         flight_data = create_mock_flight_data()
@@ -138,8 +144,22 @@ class TestCreateItemsFromFlightData:
         assert len(items) == 2
         item = items[0]
 
-        # Check types are Python float, not numpy
-        assert isinstance(item.properties['opr:frequency'], float)
-        assert isinstance(item.properties['opr:bandwidth'], float)
-        assert not isinstance(item.properties['opr:frequency'], np.floating)
-        assert not isinstance(item.properties['opr:bandwidth'], np.floating)
+        # Check types are Python int, not numpy
+        assert isinstance(item.properties['opr:frequency'], int)
+        assert isinstance(item.properties['opr:bandwidth'], int)
+        assert not isinstance(item.properties['opr:frequency'], np.integer)
+        assert not isinstance(item.properties['opr:bandwidth'], np.integer)
+
+    @patch('xopr.stac.catalog.compute_mbox', return_value=[1, 2, 3, 4])
+    @patch('xopr.stac.catalog.extract_item_metadata')
+    def test_items_have_opr_extension_fields(self, mock_extract, mock_mbox):
+        """Test that items have opr:mbox, opr:provider, and OPR_EXT."""
+        mock_extract.return_value = create_mock_metadata()
+        flight_data = create_mock_flight_data()
+
+        items = create_items_from_flight_data(flight_data, get_test_config())
+
+        item = items[0]
+        assert item.properties['opr:provider'] == 'cresis'
+        assert item.properties['opr:mbox'] == [1, 2, 3, 4]
+        assert OPR_EXT in item.stac_extensions

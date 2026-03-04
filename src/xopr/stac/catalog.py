@@ -16,10 +16,11 @@ from shapely.geometry import mapping
 
 from .geometry import simplify_geometry_polar_projection
 from .metadata import extract_item_metadata
+from .morton import compute_mbox, compute_mpolygon_from_items
 
 # STAC extension URLs
 SCI_EXT = 'https://stac-extensions.github.io/scientific/v1.0.0/schema.json'
-# PROJ_EXT = 'https://stac-extensions.github.io/projection/v2.0.0/schema.json'  # Not used - no collection-level geometry
+OPR_EXT = 'https://englacial.github.io/opr-stac-extension/v1.0.0/schema.json'
 
 
 def create_collection(
@@ -152,6 +153,7 @@ def create_items_from_flight_data(
     base_url: str = "https://data.cresis.ku.edu/data/rds/",
     campaign_name: str = "",
     primary_data_product: str = "CSARP_standard",
+    provider: str = "cresis",
     verbose: bool = False,
     error_log_file: Optional[Union[str, Path]] = None
 ) -> List[pystac.Item]:
@@ -171,6 +173,8 @@ def create_items_from_flight_data(
         Campaign name for URL construction.
     primary_data_product : str, default "CSARP_standard"
         Data product name to use as primary data source.
+    provider : str, default "cresis"
+        Data provider identifier (awi, cresis, dtu, utig).
     verbose : bool, default False
         If True, print details for each item being processed.
     error_log_file : str or Path, optional
@@ -231,15 +235,23 @@ def create_items_from_flight_data(
         date_part = parts[0]  # YYYYMMDD
         segment_num_str = parts[1]  # Segment number as string (formerly flight number)
 
+        # Compute morton bounding box for this item
+        mbox = compute_mbox(geometry)
+
         # Create OPR-specific properties
         properties = {
+            'opr:provider': provider,
+            'opr:mbox': mbox,
             'opr:date': date_part,
             'opr:segment': int(segment_num_str),  # Changed from opr:flight
             'opr:frame': int(frame)  # Changed from opr:segment
         }
 
         # Add scientific extension properties if available
-        item_stac_extensions = ['https://stac-extensions.github.io/file/v2.1.0/schema.json']
+        item_stac_extensions = [
+            'https://stac-extensions.github.io/file/v2.1.0/schema.json',
+            OPR_EXT,
+        ]
 
         # Map metadata keys to property names
         meta_mapping = {
@@ -251,7 +263,11 @@ def create_items_from_flight_data(
 
         for key, prop in meta_mapping.items():
             if metadata.get(key) is not None:
-                properties[prop] = metadata[key]
+                value = metadata[key]
+                # Cast frequency/bandwidth to int per OPR extension schema
+                if key in ('frequency', 'bandwidth') and value is not None:
+                    value = int(value)
+                properties[prop] = value
 
         if any(metadata.get(k) is not None for k in ['doi', 'citation']):
             item_stac_extensions.append('https://stac-extensions.github.io/scientific/v1.0.0/schema.json')
@@ -447,11 +463,20 @@ def export_collection_to_parquet(
     if verbose:
         print(f"  Exporting collection: {collection.id} ({len(collection_items)} items)")
 
+    # Compute morton polygon from all collection items
+    mpolygon = compute_mpolygon_from_items(collection_items)
+
     # Build collections metadata - single collection in this case
     collection_dict = collection.to_dict()
 
+    # Add OPR extension to collection
+    collection_exts = collection_dict.setdefault('stac_extensions', [])
+    if OPR_EXT not in collection_exts:
+        collection_exts.append(OPR_EXT)
+
     # Add OPR metadata to collection
     props = collection_dict.setdefault('properties', {})
+    props['opr:mpolygon'] = mpolygon
     if hemisphere:
         props['opr:hemisphere'] = hemisphere
     if provider:

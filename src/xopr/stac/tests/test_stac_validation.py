@@ -95,8 +95,9 @@ class TestSTACValidation:
         result = self._validate_stac_via_file(item)
         assert result is True, f"create_item() produced invalid item"
 
+    @patch('xopr.stac.catalog.compute_mbox', return_value=[1, 2, 3, 4])
     @patch('xopr.stac.catalog.extract_item_metadata')
-    def test_validate_create_items_from_flight_data(self, mock_extract):
+    def test_validate_create_items_from_flight_data(self, mock_extract, mock_mbox):
         """Test that items created by create_items_from_flight_data() are valid."""
         # Setup mock with both scientific and SAR metadata
         mock_extract.return_value = create_mock_metadata(
@@ -123,8 +124,9 @@ class TestSTACValidation:
             assert result is True, f"create_items_from_flight_data() produced invalid item {i}"
 
 
+    @patch('xopr.stac.catalog.compute_mbox', return_value=[1, 2, 3, 4])
     @patch('xopr.stac.catalog.extract_item_metadata')
-    def test_validate_items_with_extensions(self, mock_extract):
+    def test_validate_items_with_extensions(self, mock_extract, mock_mbox):
         """Test that items with extensions created by create_items_from_flight_data() are valid."""
         # Test with no extensions (minimal case)
         mock_extract.return_value = create_mock_metadata(

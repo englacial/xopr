@@ -13,6 +13,7 @@ from .catalog import (
     create_items_from_flight_data,
     export_collection_to_parquet,
 )
+from .morton import compute_mbox, compute_mpolygon_from_items
 from .config import load_config, save_config, validate_config
 from .geometry import (
     build_collection_extent_and_geometry,
@@ -43,5 +44,8 @@ __all__ = [
     "collect_uniform_metadata",
     # Geometry functions
     "build_collection_extent_and_geometry",
-    "simplify_geometry_polar_projection"
+    "simplify_geometry_polar_projection",
+    # Morton index functions
+    "compute_mbox",
+    "compute_mpolygon_from_items",
 ]
