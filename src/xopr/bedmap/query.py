@@ -322,8 +322,8 @@ def build_duckdb_query(
                 select_parts.append(f'"{col}"')
         select_clause = ', '.join(select_parts)
     else:
-        # Select all columns plus extracted lon/lat
-        select_clause = '*, ST_X(geometry) as lon, ST_Y(geometry) as lat'
+        # Select all columns except raw geometry, plus extracted lon/lat
+        select_clause = '* EXCLUDE (geometry), ST_X(geometry) as lon, ST_Y(geometry) as lat'
 
     # Build WHERE clause
     where_conditions = []
