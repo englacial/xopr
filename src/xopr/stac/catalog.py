@@ -231,8 +231,8 @@ def create_items_from_flight_data(
         date_part = parts[0]  # YYYYMMDD
         segment_num_str = parts[1]  # Segment number as string (formerly flight number)
 
-        # Compute morton bounding box for this item
-        mbox = compute_mbox(geometry)
+        # Compute morton bounding box from full (unsimplified) geometry
+        mbox = compute_mbox(mapping(metadata['raw_geom']))
 
         # Create OPR-specific properties
         properties = {

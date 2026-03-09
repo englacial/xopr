@@ -110,8 +110,10 @@ def create_mock_metadata(doi=None, citation=None, frequency=190e6, bandwidth=50e
     dict
         Mock metadata dictionary
     """
+    geom = LineString([(-69.86, -71.35), (-69.85, -71.36), (-69.84, -71.37)])
     return {
-        'geom': LineString([(-69.86, -71.35), (-69.85, -71.36), (-69.84, -71.37)]),
+        'geom': geom,
+        'raw_geom': geom,
         'bbox': box(-69.86, -71.37, -69.84, -71.35),
         'date': datetime(2016, 10, 14, 16, 12, 44),
         'frequency': frequency,
