@@ -3,7 +3,7 @@
 YAML templates that define how to build STAC catalogs for each campaign season.
 Each template captures the full provenance needed to reproducibly build and
 upload the hive-partitioned parquet catalogs hosted on
-[source.coop/englacial/xopr](https://source.coop/repositories/englacial/xopr/).
+[source.coop/englacial/xopr](https://source.coop/englacial/xopr).
 
 ## Naming convention
 
@@ -45,6 +45,83 @@ collection ID.
 | `sci.override` | bool | no | no | Override per-item citations with this one |
 
 See `config/catalog_config_schema.py` for the full Cerberus validation schema.
+
+## Example template
+
+```yaml
+# --- Schema version (required) ---
+version: 1.0.0
+
+data:
+  # Filesystem path to the CReSIS data tree
+  root: /kucresis/scratch/dataproducts/public/data/rds
+  # Data provider identifier (awi, cresis, dtu, utig)
+  provider: cresis
+  # Primary radar product used to build STAC items
+  primary_product: CSARP_standard
+  # Additional products attached as extra assets on each item
+  extra_products:
+  - CSARP_qlook
+  - CSARP_layer
+  campaigns:
+    # Exactly which campaign directories to process
+    include:
+    - 2002_Greenland_P3
+    # Campaigns to skip (empty = skip none)
+    exclude: []
+  # Regex filter applied after include/exclude (empty = no filter)
+  campaign_filter: ''
+
+output:
+  # Where the parquet file lands locally before upload
+  path: ./catalog_v3/ICORDS2
+  # STAC catalog ID shared across all seasons in this project
+  catalog_id: OPR-CReSIS
+  catalog_description: Open Polar Radar CRESIS airborne data
+  # SPDX license identifier
+  license: CC0-1.0
+
+processing:
+  # Dask workers spawned per campaign (one fresh cluster each)
+  n_workers: 20
+  # Per-worker memory cap
+  memory_limit: 8GB
+  # Set to an integer to cap the number of items processed (null = all)
+  max_items: null
+
+assets:
+  # Public URL prefix prepended to each asset href
+  base_url: https://data.cresis.ku.edu/data/rds/
+
+logging:
+  verbose: false
+  level: INFO
+
+geometry:
+  # Simplify flight-line geometries to reduce parquet size
+  simplify: true
+  # Simplification tolerance in metres (higher = smaller files)
+  tolerance: 100.0
+
+radar:
+  # Chirp start and stop frequencies in Hz (used for opr:bandwidth)
+  f0: 141500000
+  f1: 158500000
+  # true = apply these values to every item, ignoring per-file headers
+  override: true
+
+sci:
+  # Citation text attached to every item via the scientific STAC extension
+  citation: >-
+    CReSIS. 2026. ICORDS2 Data, Lawrence, Kansas, USA. Digital Media.
+    http://data.cresis.ku.edu/ . We acknowledge the use of data and/or data
+    products from CReSIS generated with support from the University of Kansas,
+    NASA Operation IceBridge grant NNX16AH54G, NSF grants ACI-1443054,
+    OPP-1739003, and IIS-1838230, Lilly Endowment Incorporated, and Indiana
+    METACyt Initiative.
+  # true = override any per-item citation with the one above
+  override: true
+```
 
 ## Building a catalog
 
