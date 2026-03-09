@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Build STAC collections from OPR data using YAML configuration.
-Primary workflow: Build parquet collections in parallel, then aggregate with aggregate_parquet_catalog.py
+Produces hive-partitioned parquet files ready for upload to source.coop.
 """
 
 import argparse
@@ -243,7 +243,7 @@ def process_catalog(conf: DictConfig):
     # Summary
     print(f"\n🎉 Successfully created {len(results)} out of {len(campaigns)} parquet files")
     if results:
-        print("📋 Next step: Run aggregate_parquet_catalog.py to create catalog.json")
+        print("📋 Next step: Upload to source.coop with upload_stac_catalogs.py")
 
 
 def main():
