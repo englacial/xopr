@@ -15,17 +15,17 @@ aws_secret_access_key, aws_session_token, and region_name fields.
 Pass the path via --credentials or SOURCE_COOP_CREDENTIALS env var.
 """
 
-import os
-import sys
 import argparse
 import json
-from pathlib import Path
-from typing import Dict, Tuple
+import os
 import re
+import sys
+from pathlib import Path
+from typing import Dict
 
 try:
-    import pyarrow.parquet as pq
     import pandas as pd
+    import pyarrow.parquet as pq
 except ImportError:
     print("Error: pyarrow and pandas are required. Install with: pip install pyarrow pandas")
     sys.exit(1)
@@ -74,7 +74,7 @@ def check_s3_auth(s3_client) -> bool:
         s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix=S3_PREFIX + "/", MaxKeys=1)
         return True
     except (ClientError, NoCredentialsError) as e:
-        print(f"ERROR: Not authenticated to Source.coop S3")
+        print("ERROR: Not authenticated to Source.coop S3")
         print(f"Error details: {e}")
         print("\nTo fix this, provide a credentials JSON file with:")
         print("  --credentials path/to/source_coop_token.json")
@@ -176,7 +176,7 @@ def upload_file(s3_client, local_path: str, s3_key: str, dry_run: bool = True) -
     """Upload a file to Source.coop S3."""
     s3_uri = f"s3://{S3_BUCKET}/{s3_key}"
     if dry_run:
-        print(f"[DRY RUN] Would upload:")
+        print("[DRY RUN] Would upload:")
         print(f"  FROM: {local_path}")
         print(f"    TO: {s3_uri}")
         return True
@@ -238,8 +238,8 @@ def process_directory(s3_client, directory: str, dry_run: bool = True, verbose: 
 
         if missing_fields:
             print(f"  ERROR: Missing required metadata fields: {', '.join(missing_fields)}")
-            print(f"  Please ensure the parquet file contains opr:hemisphere and opr:provider metadata")
-            print(f"  Skipping...")
+            print("  Please ensure the parquet file contains opr:hemisphere and opr:provider metadata")
+            print("  Skipping...")
             skipped += 1
             continue
 
@@ -251,7 +251,7 @@ def process_directory(s3_client, directory: str, dry_run: bool = True, verbose: 
         # Validate hemisphere value
         if hemisphere not in ['north', 'south']:
             print(f"  ERROR: Invalid hemisphere value '{hemisphere}'. Must be 'north' or 'south'")
-            print(f"  Skipping...")
+            print("  Skipping...")
             skipped += 1
             continue
 
