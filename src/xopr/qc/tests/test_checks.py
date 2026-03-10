@@ -1,13 +1,13 @@
 """Tests for QC check functions."""
 
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 import xarray as xr
 from scipy.constants import c as speed_of_light
-from unittest.mock import MagicMock
 
 from xopr.qc.checks import (
-    _apply_qc_mask,
     ensure_picks,
     heading_change,
     ice_thickness_threshold,
