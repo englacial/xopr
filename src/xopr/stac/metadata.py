@@ -140,9 +140,10 @@ def extract_item_metadata(
 
     # Create geometry
     geom_series = gpd.GeoSeries(map(Point, zip(ds['Longitude'].values, ds['Latitude'].values)))
-    line = LineString(geom_series.tolist())
+    raw_line = LineString(geom_series.tolist())
 
     # Apply simplification based on config
+    line = raw_line
     if conf and conf.get('geometry', {}).get('simplify', True):
         tolerance = conf.geometry.get('tolerance', 100.0)
         line = simplify_geometry_polar_projection(line, simplify_tolerance=tolerance)
@@ -245,6 +246,7 @@ def extract_item_metadata(
 
     return {
         'geom': line,
+        'raw_geom': raw_line,
         'bbox': boundingbox,
         'date': date,
         'frequency': center_freq,

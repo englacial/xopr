@@ -2,12 +2,11 @@
 STAC catalog creation utilities for Open Polar Radar data.
 """
 
-import json
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-import pyarrow.parquet as pq
+import pyarrow as pa
 import pystac
 import stac_geoparquet
 from omegaconf import DictConfig
@@ -15,10 +14,11 @@ from shapely.geometry import mapping
 
 from .geometry import simplify_geometry_polar_projection
 from .metadata import extract_item_metadata
+from .morton import compute_mbox, compute_mpolygon_from_items
 
 # STAC extension URLs
 SCI_EXT = 'https://stac-extensions.github.io/scientific/v1.0.0/schema.json'
-# PROJ_EXT = 'https://stac-extensions.github.io/projection/v2.0.0/schema.json'  # Not used - no collection-level geometry
+OPR_EXT = 'https://englacial.github.io/opr-stac-extension/v1.0.0/schema.json'
 
 
 def create_collection(
@@ -151,6 +151,7 @@ def create_items_from_flight_data(
     base_url: str = "https://data.cresis.ku.edu/data/rds/",
     campaign_name: str = "",
     primary_data_product: str = "CSARP_standard",
+    provider: str = "cresis",
     verbose: bool = False,
     error_log_file: Optional[Union[str, Path]] = None
 ) -> List[pystac.Item]:
@@ -170,6 +171,8 @@ def create_items_from_flight_data(
         Campaign name for URL construction.
     primary_data_product : str, default "CSARP_standard"
         Data product name to use as primary data source.
+    provider : str, default "cresis"
+        Data provider identifier (awi, cresis, dtu, utig).
     verbose : bool, default False
         If True, print details for each item being processed.
     error_log_file : str or Path, optional
@@ -217,9 +220,6 @@ def create_items_from_flight_data(
         bbox = list(metadata['bbox'].bounds)
         datetime = metadata['date']
 
-        rel_mat_path = f"{campaign_name}/{primary_data_product}/{flight_id}/{data_path.name}"
-        data_href = base_url + rel_mat_path
-
         # Extract frame number from MAT filename (e.g., "Data_20161014_03_001.mat" -> "001")
         frame_match = re.search(r'_(\d+)\.mat$', data_path.name)
         frame = frame_match.group(1)
@@ -230,15 +230,23 @@ def create_items_from_flight_data(
         date_part = parts[0]  # YYYYMMDD
         segment_num_str = parts[1]  # Segment number as string (formerly flight number)
 
+        # Compute morton bounding box from full (unsimplified) geometry
+        mbox = compute_mbox(mapping(metadata['raw_geom']))
+
         # Create OPR-specific properties
         properties = {
+            'opr:provider': provider,
+            'opr:mbox': mbox,
             'opr:date': date_part,
             'opr:segment': int(segment_num_str),  # Changed from opr:flight
             'opr:frame': int(frame)  # Changed from opr:segment
         }
 
         # Add scientific extension properties if available
-        item_stac_extensions = ['https://stac-extensions.github.io/file/v2.1.0/schema.json']
+        item_stac_extensions = [
+            'https://stac-extensions.github.io/file/v2.1.0/schema.json',
+            OPR_EXT,
+        ]
 
         # Map metadata keys to property names
         meta_mapping = {
@@ -250,7 +258,11 @@ def create_items_from_flight_data(
 
         for key, prop in meta_mapping.items():
             if metadata.get(key) is not None:
-                properties[prop] = metadata[key]
+                value = metadata[key]
+                # Cast frequency/bandwidth to int per OPR extension schema
+                if key in ('frequency', 'bandwidth') and value is not None:
+                    value = int(value)
+                properties[prop] = value
 
         if any(metadata.get(k) is not None for k in ['doi', 'citation']):
             item_stac_extensions.append('https://stac-extensions.github.io/scientific/v1.0.0/schema.json')
@@ -271,7 +283,7 @@ def create_items_from_flight_data(
                     assets['data'] = assets[data_product_type]
 
         thumb_href = base_url + f"{campaign_name}/images/{flight_id}/{flight_id}_{frame}_2echo_picks.jpg"
-        assets['thumbnails'] = pystac.Asset(
+        assets['thumbnail'] = pystac.Asset(
             href=thumb_href,
             media_type=pystac.MediaType.JPEG
         )
@@ -446,11 +458,20 @@ def export_collection_to_parquet(
     if verbose:
         print(f"  Exporting collection: {collection.id} ({len(collection_items)} items)")
 
+    # Compute morton polygon from all collection items
+    mpolygon = compute_mpolygon_from_items(collection_items)
+
     # Build collections metadata - single collection in this case
     collection_dict = collection.to_dict()
 
+    # Add OPR extension to collection
+    collection_exts = collection_dict.setdefault('stac_extensions', [])
+    if OPR_EXT not in collection_exts:
+        collection_exts.append(OPR_EXT)
+
     # Add OPR metadata to collection
     props = collection_dict.setdefault('properties', {})
+    props['opr:mpolygon'] = mpolygon
     if hemisphere:
         props['opr:hemisphere'] = hemisphere
     if provider:
@@ -462,10 +483,6 @@ def export_collection_to_parquet(
             link for link in collection_dict['links']
             if not (link.get('rel') == 'item' and link.get('href') is None)
         ]
-    collections_dict = {
-        collection.id: collection_dict
-    }
-
     # Clean items and add xopr metadata before export
     clean_items = []
     for item in collection_items:
@@ -490,11 +507,29 @@ def export_collection_to_parquet(
     # Convert items to Arrow format
     record_batch_reader = stac_geoparquet.arrow.parse_stac_items_to_arrow(clean_items)
 
+    # When all items have empty links arrays, PyArrow infers the column type
+    # as list<null> which downstream tools (e.g. stac-wasm) cannot
+    # deserialize. Cast to the correct STAC link struct type.
+    table = record_batch_reader.read_all()
+    links_field = table.schema.field('links')
+    if pa.types.is_null(links_field.type.value_type):
+        links_type = pa.list_(pa.struct([
+            ('href', pa.string()),
+            ('rel', pa.string()),
+            ('type', pa.string()),
+        ]))
+        links_idx = table.schema.get_field_index('links')
+        table = table.set_column(
+            links_idx,
+            pa.field('links', links_type),
+            table.column('links').cast(links_type),
+        )
+
     # Write to Parquet with collection metadata
     # Note: Using collection_metadata for compatibility with stac-geoparquet 0.7.0
     # In newer versions (>0.8), this should be 'collections' parameter
     stac_geoparquet.arrow.to_parquet(
-        table=record_batch_reader,
+        table=table,
         output_path=parquet_file,
         collection_metadata=collection_dict,  # Single collection metadata (cleaned)
         schema_version="1.1.0",  # Use latest schema version
@@ -509,182 +544,3 @@ def export_collection_to_parquet(
     return parquet_file
 
 
-def build_catalog_from_parquet_metadata(
-    parquet_paths: List[Path],
-    output_file: Path,
-    catalog_id: str = "OPR",
-    catalog_description: str = "Open Polar Radar airborne data",
-    verbose: bool = False
-) -> None:
-    """
-    Build a catalog.json file from parquet files by reading their metadata.
-
-    This function reads collection metadata from parquet files and creates a
-    catalog.json file with proper links to the parquet files. Unlike
-    export_collections_metadata which expects STAC collections as input,
-    this function works directly with parquet files.
-
-    Parameters
-    ----------
-    parquet_paths : List[Path]
-        List of paths to parquet files containing STAC collections
-    output_file : Path
-        Output path for the catalog.json file
-    catalog_id : str, optional
-        Catalog ID, by default "OPR"
-    catalog_description : str, optional
-        Catalog description, by default "Open Polar Radar airborne data"
-    base_url : str, optional
-        Base URL for asset hrefs. If None, uses relative paths
-    verbose : bool, optional
-        If True, print progress messages
-
-    Examples
-    --------
-    >>> import glob
-    >>> parquet_files = [Path(p) for p in glob.glob("output/*.parquet")]
-    >>> build_catalog_from_parquet_metadata(
-    ...     parquet_files, Path("output/catalog.json"), verbose=True
-    ... )
-    """
-    if verbose:
-        print(f"Building catalog from {len(parquet_paths)} parquet files")
-
-    collections_data = []
-
-    for parquet_path in parquet_paths:
-        if not parquet_path.exists():
-            if verbose:
-                print(f"  ⚠️  Skipping non-existent file: {parquet_path}")
-            continue
-
-        try:
-            # Read parquet metadata without loading the data
-            parquet_metadata = pq.read_metadata(str(parquet_path))
-            file_metadata = parquet_metadata.metadata
-
-            # Extract collection metadata from parquet file
-            collection_dict = None
-            if file_metadata:
-                # Try new format first (stac:collections)
-                if b'stac:collections' in file_metadata:
-                    collections_json = file_metadata[b'stac:collections'].decode('utf-8')
-                    collections_meta = json.loads(collections_json)
-                    # Get the first (and should be only) collection
-                    if collections_meta:
-                        collection_id = list(collections_meta.keys())[0]
-                        collection_dict = collections_meta[collection_id]
-                # Try legacy format used by stac-geoparquet 0.7.0
-                elif b'stac-geoparquet' in file_metadata:
-                    geoparquet_meta = json.loads(file_metadata[b'stac-geoparquet'].decode('utf-8'))
-                    if 'collection' in geoparquet_meta:
-                        collection_dict = geoparquet_meta['collection']
-
-            if not collection_dict:
-                if verbose:
-                    print(f"  ⚠️  No collection metadata found in {parquet_path.name}")
-                continue
-
-            # Extract relevant metadata for collections.json format
-            collection_id = collection_dict.get('id', parquet_path.stem)
-
-            # Build collection entry
-            collection_entry = {
-                'type': 'Collection',
-                'stac_version': collection_dict.get('stac_version', '1.1.0'),
-                'id': collection_id,
-                'description': collection_dict.get('description', f"Collection {collection_id}"),
-                'license': collection_dict.get('license', 'various'),
-                'extent': collection_dict.get('extent'),
-                'links': [],  # Clear links as we'll build our own
-                'assets': {
-                    'data': {
-                        'href': f"./{parquet_path.name}",
-                        'type': 'application/vnd.apache.parquet',
-                        'title': 'Collection data in Apache Parquet format',
-                        'roles': ['data']
-                    }
-                }
-            }
-
-            # Add optional fields if present
-            if 'title' in collection_dict:
-                collection_entry['title'] = collection_dict['title']
-
-            # Add STAC extensions if present
-            if collection_dict.get('stac_extensions'):
-                collection_entry['stac_extensions'] = collection_dict['stac_extensions']
-
-            # Add any extra fields that might be present (like sci:doi, etc)
-            for key in collection_dict:
-                if key.startswith('sci:') or key.startswith('sar:') or key.startswith('proj:'):
-                    collection_entry[key] = collection_dict[key]
-
-            collections_data.append(collection_entry)
-
-            if verbose:
-                num_rows = parquet_metadata.num_rows
-                print(f"  ✅ Added {collection_id} ({num_rows} items)")
-
-        except Exception as e:
-            if verbose:
-                print(f"  ❌ Error reading {parquet_path.name}: {e}")
-            continue
-
-    if not collections_data:
-        raise ValueError("No valid collections found in parquet files")
-
-    # Sort collections by ID for consistent output
-    collections_data.sort(key=lambda x: x['id'])
-
-    # Build the catalog structure
-    catalog = {
-        'type': 'Catalog',
-        'id': catalog_id,
-        'stac_version': '1.1.0',
-        'description': catalog_description,
-        'links': [
-            {
-                'rel': 'root',
-                'href': './catalog.json',
-                'type': 'application/json'
-            }
-        ]
-    }
-
-    # Add child links for each collection
-    for collection in collections_data:
-        catalog['links'].append({
-            'rel': 'child',
-            'href': f"./{collection['id']}.parquet",
-            'type': 'application/vnd.apache.parquet',
-            'title': collection.get('title', collection['description'])
-        })
-
-    # Determine common STAC extensions across all collections
-    all_extensions = set()
-    for collection in collections_data:
-        if 'stac_extensions' in collection:
-            all_extensions.update(collection['stac_extensions'])
-
-    if all_extensions:
-        catalog['stac_extensions'] = sorted(list(all_extensions))
-
-    # Ensure output directory exists
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-
-    # Write the catalog.json file
-    with open(output_file, 'w') as f:
-        json.dump(catalog, f, indent=2, separators=(",", ": "))
-
-    if verbose:
-        print(f"\n✅ Catalog saved to {output_file}")
-        print(f"   Contains {len(collections_data)} collections")
-
-    # Also save a collections.json file for compatibility
-    collections_file = output_file.parent / "collections.json"
-    with open(collections_file, 'w') as f:
-        json.dump(collections_data, f, indent=2, separators=(",", ": "))
-
-    if verbose:
-        print(f"✅ Collections metadata saved to {collections_file}")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Build STAC collections from OPR data using YAML configuration.
-Primary workflow: Build parquet collections in parallel, then aggregate with aggregate_parquet_catalog.py
+Produces hive-partitioned parquet files ready for upload to source.coop.
 """
 
 import argparse
@@ -10,11 +10,10 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
-from omegaconf import DictConfig, OmegaConf
-import pystac
 from dask.distributed import Client, LocalCluster, as_completed
+from omegaconf import DictConfig, OmegaConf
 
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 from xopr.stac.config import load_config, save_config, validate_config
@@ -125,7 +124,7 @@ def build_collection_parallel(campaign_path: Path, conf: DictConfig, client: Cli
     output_dir = Path(conf.output.path)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    print(f"💾 Writing parquet file...")
+    print("💾 Writing parquet file...")
     parquet_path = export_collection_to_parquet(
         collection, conf
     )
@@ -243,7 +242,7 @@ def process_catalog(conf: DictConfig):
     # Summary
     print(f"\n🎉 Successfully created {len(results)} out of {len(campaigns)} parquet files")
     if results:
-        print("📋 Next step: Run aggregate_parquet_catalog.py to create catalog.json")
+        print("📋 Next step: Upload to source.coop with upload_stac_catalogs.py")
 
 
 def main():
