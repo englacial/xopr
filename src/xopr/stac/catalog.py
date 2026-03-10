@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pystac
 import stac_geoparquet
 from omegaconf import DictConfig

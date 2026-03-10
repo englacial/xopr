@@ -1,18 +1,17 @@
 """Tests for bedmap-to-frame morton matching."""
 
-import numpy as np
-import pandas as pd
 import geopandas as gpd
-from shapely.geometry import LineString, Point
+import numpy as np
 from mortie import geo2mort, geo_morton_polygon
+from shapely.geometry import LineString, Point
 
 from xopr.bedmap.morton_match import (
     _build_frame_groups,
     _build_mbox_lookup,
     _find_contiguous_runs,
     _morton_prefix_match,
-    match_bedmap_to_frames,
     disambiguate_matches,
+    match_bedmap_to_frames,
 )
 
 
