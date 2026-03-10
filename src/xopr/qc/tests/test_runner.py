@@ -1,9 +1,10 @@
 """Tests for QC runner."""
 
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 import xarray as xr
-from unittest.mock import MagicMock
 
 from xopr.qc.checks import _apply_qc_mask
 from xopr.qc.runner import run_qc
