@@ -83,9 +83,7 @@ def run_qc(ds, checks=None, opr=None):
                 )
             resolved.append((_CHECKS[key], kwargs))
         else:
-            raise TypeError(
-                f"Check keys must be strings or callables, got {type(key)}"
-            )
+            raise TypeError(f"Check keys must be strings or callables, got {type(key)}")
 
     ds = ensure_picks(ds, opr=opr)
 

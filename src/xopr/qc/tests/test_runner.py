@@ -54,9 +54,11 @@ def test_run_qc_invalid_check(synthetic_ds):
 
 def test_run_qc_callable_key(synthetic_ds):
     """A callable can be used as a check key."""
+
     def always_pass(ds):
-        mask = xr.DataArray(np.ones(ds.sizes["slow_time"], dtype=bool),
-                            dims="slow_time")
+        mask = xr.DataArray(
+            np.ones(ds.sizes["slow_time"], dtype=bool), dims="slow_time"
+        )
         return _apply_qc_mask(ds, mask, "always_pass")
 
     result = run_qc(synthetic_ds, checks={always_pass: {}})
@@ -66,9 +68,11 @@ def test_run_qc_callable_key(synthetic_ds):
 
 def test_run_qc_mixed_keys(synthetic_ds):
     """String and callable keys can be mixed."""
+
     def flag_none(ds):
-        mask = xr.DataArray(np.zeros(ds.sizes["slow_time"], dtype=bool),
-                            dims="slow_time")
+        mask = xr.DataArray(
+            np.zeros(ds.sizes["slow_time"], dtype=bool), dims="slow_time"
+        )
         return _apply_qc_mask(ds, mask, "flag_none")
 
     result = run_qc(
