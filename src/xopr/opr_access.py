@@ -412,7 +412,7 @@ class OPRConnection:
 
             if not url:
                 raise ValueError(f"No href found in {data_product} asset")
-            
+
         # If a specific image is requested, modify the URL to point to that image
         if image is not None:
             if not allow_unlisted_products:
