@@ -305,6 +305,7 @@ class OPRConnection:
 
     def load_frames(self, stac_items: gpd.GeoDataFrame,
                     data_product: str = "CSARP_standard",
+                    image: Union[int, None] = None,
                     merge_flights: bool = False,
                     skip_errors: bool = False,
                     allow_unlisted_products: bool = False
@@ -318,6 +319,9 @@ class OPRConnection:
             STAC items returned from query_frames.
         data_product : str, optional
             Data product to load (e.g., "CSARP_standard", "CSARP_qlook").
+        image : int or None, optional
+            The image number to load for each frame. If None (default), loads the
+            combined image. If specified, `allow_unlisted_products` must be True.
         merge_flights : bool, optional
             If True, merge frames from the same segment into single Datasets.
         skip_errors : bool, optional
@@ -336,7 +340,7 @@ class OPRConnection:
 
         for idx, item in stac_items.iterrows():
             try:
-                frame = self.load_frame(item, data_product, allow_unlisted_products=allow_unlisted_products)
+                frame = self.load_frame(item, data_product, image=image, allow_unlisted_products=allow_unlisted_products)
                 frames.append(frame)
             except Exception as e:
                 print(f"Error loading frame for item {item.get('id', 'unknown')}: {e}")
@@ -351,6 +355,7 @@ class OPRConnection:
             return frames
 
     def load_frame(self, stac_item, data_product: str = "CSARP_standard",
+                   image: Union[int, None] = None,
                    allow_unlisted_products: bool = False) -> xr.Dataset:
         """
         Load a single radar frame from a STAC item.
@@ -361,6 +366,9 @@ class OPRConnection:
             STAC item containing asset URLs.
         data_product : str, optional
             Data product to load (e.g., "CSARP_standard", "CSARP_qlook").
+        image : int or None, optional
+            The image number to load for this frame. If None (default), loads the
+            combined image. If specified, `allow_unlisted_products` must be True.
         allow_unlisted_products : bool, optional
             If True, attempt to load the specified data product even if it's not
             listed in the item's assets.  This can be useful for loading non-standard
@@ -404,6 +412,12 @@ class OPRConnection:
 
             if not url:
                 raise ValueError(f"No href found in {data_product} asset")
+            
+        # If a specific image is requested, modify the URL to point to that image
+        if image is not None:
+            if not allow_unlisted_products:
+                raise ValueError("Specifying an image number requires allow_unlisted_products=True to construct the URL")
+            url = url.replace("Data_", f"Data_img_{image:02d}_")
 
         # Load the frame using the existing method
         return self.load_frame_url(url)
