@@ -25,7 +25,7 @@ dependencies = [
     "rustac>=0.6.0",
     "antimeridian>=0.4.3",
     "hdf5storage>=0.2.2",  # Requires Sept 2025 release with pkg_resources fix
-    "duckdb>=1.0.0",
+    "duckdb>=1.0.0,<=1.4.3",
     "haversine>=2.8.0",
     "pyarrow",
     "platformdirs",
