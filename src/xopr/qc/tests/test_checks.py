@@ -214,8 +214,7 @@ def test_ensure_picks_already_present(synthetic_ds):
 
 
 def test_ensure_picks_no_opr_raises():
-    ds = xr.Dataset({"Data": ("slow_time", [1.0])},
-                    coords={"slow_time": [0.0]})
+    ds = xr.Dataset({"Data": ("slow_time", [1.0])}, coords={"slow_time": [0.0]})
     with pytest.raises(ValueError, match="OPRConnection"):
         ensure_picks(ds)
 
@@ -269,8 +268,7 @@ def test_ensure_picks_loads_both():
 
 
 def test_ensure_picks_no_layers_raises():
-    ds = xr.Dataset({"Data": ("slow_time", [1.0])},
-                    coords={"slow_time": [0.0]})
+    ds = xr.Dataset({"Data": ("slow_time", [1.0])}, coords={"slow_time": [0.0]})
     mock_opr = MagicMock()
     mock_opr.get_layers.return_value = None
     with pytest.raises(ValueError, match="No layer data"):
