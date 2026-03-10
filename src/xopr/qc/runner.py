@@ -2,9 +2,6 @@
 QC runner — orchestrates multiple quality control checks on a dataset.
 """
 
-import numpy as np
-import xarray as xr
-
 from .checks import (
     ensure_picks,
     heading_change,

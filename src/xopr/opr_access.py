@@ -407,7 +407,7 @@ class OPRConnection:
         else:
             # The asset does exist in the STAC item, so just get the URL from the asset
             url = data_asset.get('href')
-        
+
             if not url:
                 raise ValueError(f"No href found in {data_product} asset")
 
