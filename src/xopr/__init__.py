@@ -34,6 +34,7 @@ except ImportError:
     __version__ = "unknown"
 
 from . import geometry as geometry
+from . import qc as qc
 from .opr_access import OPRConnection as OPRConnection
 from .opr_tools import find_intersections as find_intersections
 from .opr_tools import merge_frames as merge_frames
