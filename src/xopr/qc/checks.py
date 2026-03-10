@@ -10,7 +10,6 @@ import xarray as xr
 from pyproj import Transformer
 from scipy.constants import c as speed_of_light
 
-
 _REQUIRED_LAYERS = {
     "standard:surface": [":surface"],
     "standard:bottom": [":bottom"],
