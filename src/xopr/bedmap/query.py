@@ -709,44 +709,28 @@ def _query_bedmap_cached(
         warnings.warn("No valid bedmap versions specified")
         return gpd.GeoDataFrame()
 
-    # Check if data directory has files, if not download them
-    if not data_dir.exists() or not list(data_dir.glob('*.parquet')):
-        print("No cached data files found, downloading...")
-        for ver in versions:
-            fetch_bedmap(version=ver, data_dir=data_dir)
+    # Query STAC catalog to determine which files match the request
+    catalog_items = query_bedmap_catalog(
+        collections=versions,
+        geometry=geometry,
+        date_range=date_range,
+    )
 
-    # Use STAC catalog to pre-filter files when geometry is provided
-    # This is much faster than querying all files
+    # Map catalog items to local file paths, downloading missing files
+    data_dir.mkdir(parents=True, exist_ok=True)
     parquet_paths = []
-    if geometry is not None:
-        # Query catalog to find matching files
-        catalog_items = query_bedmap_catalog(
-            collections=versions,
-            geometry=geometry,
-            date_range=date_range,
-        )
-
-        if not catalog_items.empty:
-            # Map catalog items to local file paths
-            for idx, item in catalog_items.iterrows():
-                props = item.get('properties', {})
-                if isinstance(props, dict):
-                    href = props.get('asset_href', '')
-                    if href:
-                        fname = href.split('/')[-1]
-                        local_path = data_dir / fname
-                        if local_path.exists():
-                            parquet_paths.append(str(local_path))
-
-    # Fall back to all files if no geometry filter or no catalog matches,
-    # filtering by version suffix (e.g. _BM1, _BM2, _BM3) when collections
-    # are specified
-    if not parquet_paths and data_dir.exists():
-        version_suffixes = [v.replace('bedmap', '_BM') for v in versions]
-        parquet_paths = [
-            str(p) for p in sorted(data_dir.glob('*.parquet'))
-            if any(p.stem.endswith(s) for s in version_suffixes)
-        ]
+    if not catalog_items.empty:
+        for idx, item in catalog_items.iterrows():
+            props = item.get('properties', {})
+            if isinstance(props, dict):
+                href = props.get('asset_href', '')
+                if href:
+                    fname = href.split('/')[-1]
+                    local_path = data_dir / fname
+                    if not local_path.exists():
+                        _download_file(href, local_path)
+                    if local_path.exists():
+                        parquet_paths.append(str(local_path))
 
     if not parquet_paths:
         warnings.warn("No bedmap files available")
