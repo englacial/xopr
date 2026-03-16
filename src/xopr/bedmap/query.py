@@ -694,7 +694,8 @@ def _query_bedmap_cached(
     Query bedmap data from locally cached files.
 
     Internal helper that fetches data if needed and queries local files.
-    Uses STAC catalog to pre-filter files when geometry is provided.
+    Uses STAC catalog to determine which files belong to the requested
+    collections, downloading any that are missing from the local cache.
     """
     data_dir = Path(data_dir) if data_dir else DEFAULT_BEDMAP_DATA_DIR
 
@@ -736,40 +737,15 @@ def _query_bedmap_cached(
         warnings.warn("No bedmap files available")
         return gpd.GeoDataFrame()
 
-    # Build and execute DuckDB query on local files
-    query = build_duckdb_query(
-        parquet_urls=parquet_paths,
+    return query_bedmap_local(
+        parquet_dir=data_dir,
+        parquet_files=parquet_paths,
         geometry=geometry,
         date_range=date_range,
         columns=columns,
-        max_rows=max_rows
+        max_rows=max_rows,
+        exclude_geometry=exclude_geometry,
     )
-
-    conn = duckdb.connect()
-    try:
-        if not show_progress:
-            conn.execute("SET enable_progress_bar = false")
-        conn.execute("INSTALL spatial; LOAD spatial;")
-        result_df = conn.execute(query).df()
-    except Exception as e:
-        warnings.warn(f"Error executing DuckDB query: {e}")
-        return gpd.GeoDataFrame()
-    finally:
-        conn.close()
-
-    if result_df.empty:
-        return gpd.GeoDataFrame()
-
-    print(f"Retrieved {len(result_df):,} rows from local cache")
-
-    if 'lon' in result_df.columns and 'lat' in result_df.columns:
-        if not exclude_geometry:
-            geom = gpd.points_from_xy(result_df['lon'], result_df['lat'])
-            return gpd.GeoDataFrame(result_df, geometry=geom, crs='EPSG:4326')
-        else:
-            return gpd.GeoDataFrame(result_df)
-
-    return gpd.GeoDataFrame(result_df)
 
 
 def query_bedmap_local(
@@ -778,7 +754,8 @@ def query_bedmap_local(
     date_range: Optional[Tuple[datetime, datetime]] = None,
     columns: Optional[List[str]] = None,
     max_rows: Optional[int] = None,
-    exclude_geometry: bool = True
+    exclude_geometry: bool = True,
+    parquet_files: Optional[List[str]] = None,
 ) -> gpd.GeoDataFrame:
     """
     Query bedmap data from local GeoParquet files.
@@ -799,20 +776,24 @@ def query_bedmap_local(
         Maximum rows to return
     exclude_geometry : bool, default True
         Whether to exclude geometry column
+    parquet_files : list of str, optional
+        Explicit list of parquet file paths to query. If provided,
+        parquet_dir is ignored for file discovery.
 
     Returns
     -------
     geopandas.GeoDataFrame
         Query results
     """
-    parquet_dir = Path(parquet_dir)
-    parquet_files = sorted(parquet_dir.glob('*.parquet'))
-
-    if not parquet_files:
-        warnings.warn(f"No parquet files found in {parquet_dir}")
-        return gpd.GeoDataFrame()
-
-    parquet_urls = [str(f) for f in parquet_files]
+    if parquet_files:
+        parquet_urls = parquet_files
+    else:
+        parquet_dir = Path(parquet_dir)
+        found = sorted(parquet_dir.glob('*.parquet'))
+        if not found:
+            warnings.warn(f"No parquet files found in {parquet_dir}")
+            return gpd.GeoDataFrame()
+        parquet_urls = [str(f) for f in found]
 
     query = build_duckdb_query(
         parquet_urls=parquet_urls,
