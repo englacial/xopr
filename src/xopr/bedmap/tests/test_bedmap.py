@@ -31,7 +31,11 @@ from xopr.bedmap.geometry import (
     check_intersects_polar,
     get_polar_bounds,
 )
-from xopr.bedmap.query import _crosses_antimeridian, build_duckdb_query
+from xopr.bedmap.query import (
+    _crosses_antimeridian,
+    _query_bedmap_cached,
+    build_duckdb_query,
+)
 
 # =============================================================================
 # Pytest Fixtures - Reusable test data
@@ -1069,6 +1073,108 @@ class TestIntegration:
             assert 'lat' in result.columns
             assert 'source_file' in result.columns
             assert result['source_file'].iloc[0] == 'TEST_2020_DATA_BM2'
+
+
+class TestQueryBedmapCachedCollections:
+    """Test that _query_bedmap_cached respects the collections filter."""
+
+    @pytest.fixture
+    def multi_version_cache(self, tmp_path):
+        """Create a temp directory with parquet files for multiple bedmap versions."""
+        # bedmap1 data — points in East Antarctica
+        gdf_bm1 = gpd.GeoDataFrame({
+            'source_file': ['BEDMAP1_DATA_BM1'] * 3,
+            'surface_altitude (m)': [100.0, 110.0, 120.0],
+            'timestamp': pd.to_datetime(['1980-01-01'] * 3),
+        }, geometry=[Point(30, -70), Point(31, -71), Point(32, -72)],
+           crs='EPSG:4326')
+        gdf_bm1.to_parquet(tmp_path / 'BEDMAP1_DATA_BM1.parquet')
+
+        # bedmap2 data — points in West Antarctica
+        gdf_bm2 = gpd.GeoDataFrame({
+            'source_file': ['AWI_2000_TEST_BM2'] * 3,
+            'surface_altitude (m)': [200.0, 210.0, 220.0],
+            'timestamp': pd.to_datetime(['2000-01-01'] * 3),
+        }, geometry=[Point(-90, -75), Point(-91, -76), Point(-92, -77)],
+           crs='EPSG:4326')
+        gdf_bm2.to_parquet(tmp_path / 'AWI_2000_TEST_BM2.parquet')
+
+        # bedmap3 data — points near the pole
+        gdf_bm3 = gpd.GeoDataFrame({
+            'source_file': ['AWI_2020_TEST_BM3'] * 3,
+            'surface_altitude (m)': [300.0, 310.0, 320.0],
+            'timestamp': pd.to_datetime(['2020-01-01'] * 3),
+        }, geometry=[Point(0, -85), Point(1, -86), Point(2, -87)],
+           crs='EPSG:4326')
+        gdf_bm3.to_parquet(tmp_path / 'AWI_2020_TEST_BM3.parquet')
+
+        return tmp_path
+
+    def test_cached_collections_bedmap1_only(self, multi_version_cache):
+        """Requesting collections=['bedmap1'] should only return BM1 data."""
+        result = _query_bedmap_cached(
+            collections=['bedmap1'],
+            data_dir=multi_version_cache,
+        )
+        sources = result['source_file'].unique().tolist()
+        assert all('BM1' in s for s in sources), (
+            f"Expected only BM1 sources, got: {sources}"
+        )
+        assert len(result) == 3
+
+    def test_cached_collections_bedmap2_only(self, multi_version_cache):
+        """Requesting collections=['bedmap2'] should only return BM2 data."""
+        result = _query_bedmap_cached(
+            collections=['bedmap2'],
+            data_dir=multi_version_cache,
+        )
+        sources = result['source_file'].unique().tolist()
+        assert all('BM2' in s for s in sources), (
+            f"Expected only BM2 sources, got: {sources}"
+        )
+        assert len(result) == 3
+
+    def test_cached_collections_bedmap3_only(self, multi_version_cache):
+        """Requesting collections=['bedmap3'] should only return BM3 data."""
+        result = _query_bedmap_cached(
+            collections=['bedmap3'],
+            data_dir=multi_version_cache,
+        )
+        sources = result['source_file'].unique().tolist()
+        assert all('BM3' in s for s in sources), (
+            f"Expected only BM3 sources, got: {sources}"
+        )
+        assert len(result) == 3
+
+    def test_cached_no_collections_returns_all(self, multi_version_cache):
+        """No collections filter should return data from all versions."""
+        result = _query_bedmap_cached(
+            collections=None,
+            data_dir=multi_version_cache,
+        )
+        sources = result['source_file'].unique().tolist()
+        has_bm1 = any('BM1' in s for s in sources)
+        has_bm2 = any('BM2' in s for s in sources)
+        has_bm3 = any('BM3' in s for s in sources)
+        assert has_bm1 and has_bm2 and has_bm3, (
+            f"Expected all versions, got: {sources}"
+        )
+        assert len(result) == 9
+
+    def test_cached_multiple_collections(self, multi_version_cache):
+        """Requesting two collections should return only those two."""
+        result = _query_bedmap_cached(
+            collections=['bedmap1', 'bedmap3'],
+            data_dir=multi_version_cache,
+        )
+        sources = result['source_file'].unique().tolist()
+        assert all('BM1' in s or 'BM3' in s for s in sources), (
+            f"Expected only BM1/BM3 sources, got: {sources}"
+        )
+        assert not any('BM2' in s for s in sources), (
+            f"BM2 should not appear, got: {sources}"
+        )
+        assert len(result) == 6
 
 
 if __name__ == '__main__':
