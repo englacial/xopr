@@ -67,6 +67,11 @@ jobs:
     - name: Install dependencies
       run: uv sync --extra docs --extra stac
 
+    - name: Build API docs with Sphinx (MyST AST bridge)
+      run: |
+        cd docs
+        uv run --extra docs sphinx-build --builder myst . _build/myst-asts
+
     - name: Build MyST Documentation
       run: |
         cd docs
@@ -84,10 +89,11 @@ jobs:
           echo "Copied MyST output from _build/site/public to _build/html"
         fi
 
-    - name: Build API Documentation with pdoc
-      run: |
-        uv run --extra docs --extra stac pdoc -o docs/_build/html/api --docformat numpy src/xopr
-        echo "API documentation generated at docs/_build/html/api/"
+    # pdoc retained as fallback; sphinx-ext-mystmd bridge replaces this
+    # - name: Build API Documentation with pdoc
+    #   run: |
+    #     uv run --extra docs --extra stac pdoc -o docs/_build/html/api --docformat numpy src/xopr
+    #     echo "API documentation generated at docs/_build/html/api/"
 
     - name: Download coverage artifacts
       uses: actions/download-artifact@v4
