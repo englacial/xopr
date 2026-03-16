@@ -29,7 +29,6 @@ def bedmap_cache(tmp_path_factory):
     # bedmap2: 65 files; we only need one to prove the filter works.
     # fetch_bedmap downloads all files for a version, so instead we
     # grab a single small file directly.
-    from pathlib import Path
 
     import requests
 
