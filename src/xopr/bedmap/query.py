@@ -738,9 +738,15 @@ def _query_bedmap_cached(
                         if local_path.exists():
                             parquet_paths.append(str(local_path))
 
-    # Fall back to all files if no geometry filter or no catalog matches
+    # Fall back to all files if no geometry filter or no catalog matches,
+    # filtering by version suffix (e.g. _BM1, _BM2, _BM3) when collections
+    # are specified
     if not parquet_paths and data_dir.exists():
-        parquet_paths = [str(p) for p in sorted(data_dir.glob('*.parquet'))]
+        version_suffixes = [v.replace('bedmap', '_BM') for v in versions]
+        parquet_paths = [
+            str(p) for p in sorted(data_dir.glob('*.parquet'))
+            if any(p.stem.endswith(s) for s in version_suffixes)
+        ]
 
     if not parquet_paths:
         warnings.warn("No bedmap files available")
