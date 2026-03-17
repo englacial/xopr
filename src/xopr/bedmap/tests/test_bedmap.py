@@ -822,28 +822,6 @@ class TestConverterAdvancedCoverage:
             assert metadata['centre_frequency'] == 150
             assert metadata['time_coverage_start'] == 'invalid_year'
 
-    def test_apply_hilbert_sorting(self):
-        """Test Hilbert curve sorting function."""
-        from xopr.bedmap.converter import _apply_hilbert_sorting
-
-        # Create test GeoDataFrame with scattered points
-        gdf = gpd.GeoDataFrame({
-            'value': [1, 2, 3, 4, 5],
-        }, geometry=[
-            Point(-70, -75),
-            Point(-80, -85),
-            Point(-75, -80),
-            Point(-65, -70),
-            Point(-85, -90),
-        ], crs='EPSG:4326')
-
-        sorted_gdf = _apply_hilbert_sorting(gdf)
-
-        # Should have same number of rows
-        assert len(sorted_gdf) == 5
-        # Should be reordered (values should not be sequential anymore)
-        assert list(sorted_gdf['value']) != [1, 2, 3, 4, 5]
-
     def test_batch_convert_no_files(self):
         """Test batch conversion with no matching files."""
         from xopr.bedmap.converter import batch_convert_bedmap

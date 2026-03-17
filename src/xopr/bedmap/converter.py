@@ -31,7 +31,6 @@ from .geometry import (
 )
 
 
-
 def _write_geoparquet_with_metadata(
     gdf: gpd.GeoDataFrame,
     output_path: Path,
