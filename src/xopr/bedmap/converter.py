@@ -5,7 +5,6 @@ This module handles:
 - Parsing bedmap CSV files and metadata
 - Complex date/time handling with fallback strategies
 - Converting data to cloud-optimized GeoParquet format with WKB Point geometry
-- Hilbert curve sorting for large files (>600k rows) to optimize spatial queries
 - Extracting spatial and temporal bounds
 """
 
@@ -18,7 +17,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-import duckdb
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -32,10 +30,6 @@ from .geometry import (
     simplify_multiline_geometry,
 )
 
-# Threshold for applying Hilbert sorting (rows)
-HILBERT_ROW_THRESHOLD = 600_000
-# Row group size for files with Hilbert sorting
-HILBERT_ROW_GROUP_SIZE = 50_000
 
 
 def _write_geoparquet_with_metadata(
@@ -344,77 +338,6 @@ def extract_temporal_extent(
     return (start_time, end_time)
 
 
-def _apply_hilbert_sorting(gdf: gpd.GeoDataFrame, verbose: bool = True) -> gpd.GeoDataFrame:
-    """
-    Apply Hilbert curve sorting to a GeoDataFrame for spatial locality.
-
-    Uses file-specific bounds for the Hilbert curve to maximize spatial
-    locality within each file.
-
-    Parameters
-    ----------
-    gdf : geopandas.GeoDataFrame
-        GeoDataFrame with Point geometry
-    verbose : bool
-        Print progress messages
-
-    Returns
-    -------
-    geopandas.GeoDataFrame
-        Sorted GeoDataFrame
-    """
-    row_count = len(gdf)
-    if verbose:
-        print(f"    Hilbert sort: extracting {row_count:,} coordinates...")
-
-    # Extract coordinates
-    t0 = time.time()
-    coords_df = pd.DataFrame({
-        'lon': gdf.geometry.x,
-        'lat': gdf.geometry.y,
-    })
-    coords_df['orig_idx'] = range(len(coords_df))
-    if verbose:
-        print(f"    Hilbert sort: coordinates extracted ({time.time() - t0:.1f}s)")
-
-    # Get file-specific bounds for Hilbert curve
-    minx, miny, maxx, maxy = gdf.total_bounds
-    if verbose:
-        print(f"    Hilbert sort: bounds = ({minx:.2f}, {miny:.2f}) to ({maxx:.2f}, {maxy:.2f})")
-
-    t0 = time.time()
-    conn = duckdb.connect()
-    conn.execute("INSTALL spatial; LOAD spatial;")
-    conn.register('coords', coords_df)
-    if verbose:
-        print(f"    Hilbert sort: DuckDB setup ({time.time() - t0:.1f}s)")
-
-    # Compute Hilbert indices and sort
-    if verbose:
-        print(f"    Hilbert sort: computing indices for {row_count:,} rows (this may take several minutes)...")
-    t0 = time.time()
-    sorted_order = conn.execute(f"""
-        SELECT orig_idx,
-               ST_Hilbert(lon, lat,
-                   {{'min_x': {minx}, 'min_y': {miny}, 'max_x': {maxx}, 'max_y': {maxy}}}::BOX_2D
-               ) as hilbert_idx
-        FROM coords
-        ORDER BY hilbert_idx
-    """).fetchdf()
-    conn.close()
-    if verbose:
-        print(f"    Hilbert sort: indices computed ({time.time() - t0:.1f}s)")
-
-    # Reorder GeoDataFrame
-    if verbose:
-        print(f"    Hilbert sort: reordering GeoDataFrame...")
-    t0 = time.time()
-    result = gdf.iloc[sorted_order['orig_idx'].values].reset_index(drop=True)
-    if verbose:
-        print(f"    Hilbert sort: complete ({time.time() - t0:.1f}s)")
-
-    return result
-
 
 def convert_bedmap_csv(
     csv_path: Union[str, Path],
@@ -425,8 +348,7 @@ def convert_bedmap_csv(
     Convert a single bedmap CSV file to cloud-optimized GeoParquet format.
 
     Creates GeoParquet files with WKB-encoded Point geometry and zstd compression.
-    For large files (>600k rows), applies Hilbert curve sorting with 50k row groups
-    to optimize spatial queries.
+    Preserves original CSV row order with a csv_row_index column.
 
     Parameters
     ----------
@@ -524,6 +446,9 @@ def convert_bedmap_csv(
         df['latitude (degree_north)']
     )
 
+    # Preserve original CSV row order
+    df['csv_row_index'] = np.arange(len(df), dtype=np.int64)
+
     # Create GeoDataFrame with WKB Point geometry
     gdf = gpd.GeoDataFrame(
         df.drop(columns=['longitude (degree_east)', 'latitude (degree_north)',
@@ -531,18 +456,10 @@ def convert_bedmap_csv(
         geometry=geometry,
         crs='EPSG:4326'
     )
+    row_count = len(gdf)
     print(f"  Created GeoDataFrame ({time.time() - t0:.1f}s)")
 
-    # Determine if Hilbert sorting is needed based on row count
-    row_count = len(gdf)
-    use_hilbert = row_count > HILBERT_ROW_THRESHOLD
-
-    if use_hilbert:
-        print(f"  Applying Hilbert sorting ({row_count:,} rows > {HILBERT_ROW_THRESHOLD:,} threshold)")
-        gdf = _apply_hilbert_sorting(gdf)
-        row_group_size = HILBERT_ROW_GROUP_SIZE
-    else:
-        row_group_size = None  # Use default (single row group)
+    row_group_size = None
 
     # Prepare output path
     output_path = output_dir / f"{source_name}.parquet"
@@ -559,8 +476,6 @@ def convert_bedmap_csv(
     print(f"  Written to {output_path} ({time.time() - t0:.1f}s)")
 
     print(f"  Rows: {row_count:,}")
-    if use_hilbert:
-        print(f"  Row groups: {row_group_size:,} rows each")
     if bbox:
         print(f"  Spatial extent: {bbox[0]:.2f}, {bbox[1]:.2f} to {bbox[2]:.2f}, {bbox[3]:.2f}")
     if temporal_start and temporal_end:
