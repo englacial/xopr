@@ -347,7 +347,7 @@ def convert_bedmap_csv(
     Convert a single bedmap CSV file to cloud-optimized GeoParquet format.
 
     Creates GeoParquet files with WKB-encoded Point geometry and zstd compression.
-    Preserves original CSV row order with a csv_row_index column.
+    Preserves original CSV row order with a row column.
 
     Parameters
     ----------
@@ -446,7 +446,7 @@ def convert_bedmap_csv(
     )
 
     # Preserve original CSV row order
-    df['csv_row_index'] = np.arange(len(df), dtype=np.int64)
+    df['row'] = np.arange(len(df), dtype=np.int64)
 
     # Create GeoDataFrame with WKB Point geometry
     gdf = gpd.GeoDataFrame(
