@@ -9,6 +9,8 @@ in CI or fast test runs (e.g., pytest -m "not integration").
 """
 
 import pytest
+import requests
+from shapely.geometry import box
 
 from xopr.bedmap.query import fetch_bedmap, query_bedmap
 
@@ -17,27 +19,20 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture(scope="module")
 def bedmap_cache(tmp_path_factory):
-    """Download bedmap1 data to a shared temp directory.
+    """Download bedmap1 and a single bedmap3 file to a shared temp directory.
 
-    Only fetches bedmap1 (~59 MB, 1 file) to keep downloads small.
-    A single bedmap2 file is copied from the main cache if available,
-    otherwise downloaded via fetch_bedmap.
+    bedmap1: 1 file, ~59 MB
+    bedmap3: NASA_2013_ICEBRIDGE_AIR_BM3, ~12 MB (matches CRESIS/UTIG seasons)
     """
     cache_dir = tmp_path_factory.mktemp("bedmap_cache")
-    # bedmap1: 1 file, ~59 MB
     fetch_bedmap(version='bedmap1', data_dir=cache_dir)
-    # bedmap2: 65 files; we only need one to prove the filter works.
-    # fetch_bedmap downloads all files for a version, so instead we
-    # grab a single small file directly.
 
-    import requests
-
-    bm2_url = "https://data.source.coop/englacial/bedmap/data/NIPR_1999_JARE40_GRN_BM2.parquet"
-    bm2_path = cache_dir / "NIPR_1999_JARE40_GRN_BM2.parquet"
-    if not bm2_path.exists():
-        resp = requests.get(bm2_url)
+    bm3_url = "https://data.source.coop/englacial/bedmap/data/NASA_2013_ICEBRIDGE_AIR_BM3.parquet"
+    bm3_path = cache_dir / "NASA_2013_ICEBRIDGE_AIR_BM3.parquet"
+    if not bm3_path.exists():
+        resp = requests.get(bm3_url)
         resp.raise_for_status()
-        bm2_path.write_bytes(resp.content)
+        bm3_path.write_bytes(resp.content)
 
     return cache_dir
 
@@ -62,7 +57,6 @@ class TestQueryBedmapCacheParity:
         cloud_sources = set(df_cloud['source_file'].unique())
         cached_sources = set(df_cached['source_file'].unique())
 
-        # Both should contain only BM1 data
         assert all('BM1' in s for s in cloud_sources), (
             f"Cloud query returned non-BM1 sources: {cloud_sources}"
         )
@@ -75,34 +69,70 @@ class TestQueryBedmapCacheParity:
         common = dict(max_rows=50, data_dir=bedmap_cache, local_cache=True)
 
         df_bm1 = query_bedmap(collections=['bedmap1'], **common)
-        df_bm2 = query_bedmap(collections=['bedmap2'], **common)
+        df_bm3 = query_bedmap(collections=['bedmap3'], **common)
 
         assert not df_bm1.empty, "bedmap1 cached query returned no results"
-        assert not df_bm2.empty, "bedmap2 cached query returned no results"
+        assert not df_bm3.empty, "bedmap3 cached query returned no results"
 
         bm1_sources = set(df_bm1['source_file'].unique())
-        bm2_sources = set(df_bm2['source_file'].unique())
+        bm3_sources = set(df_bm3['source_file'].unique())
 
-        # The two collections should have no overlapping source files
-        assert bm1_sources.isdisjoint(bm2_sources), (
-            f"bedmap1 and bedmap2 sources overlap: "
-            f"BM1={bm1_sources}, BM2={bm2_sources}"
+        assert bm1_sources.isdisjoint(bm3_sources), (
+            f"bedmap1 and bedmap3 sources overlap: "
+            f"BM1={bm1_sources}, BM3={bm3_sources}"
         )
         assert all('BM1' in s for s in bm1_sources)
-        assert all('BM2' in s for s in bm2_sources)
+        assert all('BM3' in s for s in bm3_sources)
 
-    def test_cached_bedmap2_excludes_bedmap1(self, bedmap_cache):
-        """collections=['bedmap2'] with cache must not return any BM1 data."""
+    def test_cached_bedmap3_excludes_bedmap1(self, bedmap_cache):
+        """collections=['bedmap3'] with cache must not return any BM1 data."""
         df = query_bedmap(
-            collections=['bedmap2'],
+            collections=['bedmap3'],
             max_rows=50,
             data_dir=bedmap_cache,
             local_cache=True,
         )
 
-        assert not df.empty, "bedmap2 cached query returned no results"
+        assert not df.empty, "bedmap3 cached query returned no results"
 
         sources = set(df['source_file'].unique())
         assert not any('BM1' in s for s in sources), (
-            f"bedmap2 query returned BM1 sources: {sources}"
+            f"bedmap3 query returned BM1 sources: {sources}"
+        )
+
+    def test_spatial_query_respects_collections(self, bedmap_cache):
+        """Spatial query with collection filter should only return that collection."""
+        # West Antarctica bbox — overlaps both bedmap1 and NASA_2013 BM3 data
+        geom = box(-135, -85, -100, -75)
+
+        df_bm1 = query_bedmap(
+            collections=['bedmap1'],
+            geometry=geom,
+            max_rows=50,
+            data_dir=bedmap_cache,
+            local_cache=True,
+        )
+        df_bm3 = query_bedmap(
+            collections=['bedmap3'],
+            geometry=geom,
+            max_rows=50,
+            data_dir=bedmap_cache,
+            local_cache=True,
+        )
+
+        assert not df_bm1.empty, "bedmap1 spatial+cached query returned no results"
+        assert not df_bm3.empty, "bedmap3 spatial+cached query returned no results"
+
+        bm1_sources = set(df_bm1['source_file'].unique())
+        bm3_sources = set(df_bm3['source_file'].unique())
+
+        assert all('BM1' in s for s in bm1_sources), (
+            f"bedmap1 spatial query returned non-BM1 sources: {bm1_sources}"
+        )
+        assert all('BM3' in s for s in bm3_sources), (
+            f"bedmap3 spatial query returned non-BM3 sources: {bm3_sources}"
+        )
+        assert bm1_sources.isdisjoint(bm3_sources), (
+            f"Spatial queries with different collections should not overlap: "
+            f"BM1={bm1_sources}, BM3={bm3_sources}"
         )
