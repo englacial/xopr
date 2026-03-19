@@ -76,3 +76,6 @@ version-file = "src/xopr/_version.py"
 
 [tool.pytest.ini_options]
 addopts = "--cov=xopr --cov-report=xml --cov-report=term"
+markers = [
+    "integration: tests that download real data (may be slow)",
+]

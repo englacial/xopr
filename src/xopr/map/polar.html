@@ -372,16 +372,99 @@
                 return await expandGCSWildcards(pattern, basePath);
             }
             
+            // For Source.coop paths (backed by S3)
+            if (basePath && basePath.includes('data.source.coop')) {
+                return await expandSourceCoopWildcards(pattern, basePath);
+            }
+
             // For S3 paths
             if (basePath && (basePath.includes('s3.amazonaws.com') || basePath.includes('s3://'))) {
                 return await expandS3Wildcards(pattern, basePath);
             }
-            
+
             // If we can't expand, return the pattern as-is and let it fail later
             console.warn(`Cannot expand wildcard pattern: ${pattern}`);
             return [pattern];
         }
         
+        // Expand wildcards for Source.coop (data.source.coop backed by S3)
+        async function expandSourceCoopWildcards(pattern, basePath) {
+            console.log('Expanding Source.coop pattern:', pattern, 'with basePath:', basePath);
+
+            // Extract the path after data.source.coop/
+            const url = new URL(basePath);
+            const pathPrefix = url.pathname.substring(1); // remove leading /
+
+            // S3 bucket and listing endpoint for Source.coop
+            const bucket = 'us-west-2.opendata.source.coop';
+            const s3ListBase = `https://s3.us-west-2.amazonaws.com/${bucket}/`;
+
+            // Build the S3 prefix: basePath prefix + static part of pattern before wildcard
+            const wildcardIndex = Math.min(
+                pattern.indexOf('*') === -1 ? Infinity : pattern.indexOf('*'),
+                pattern.indexOf('?') === -1 ? Infinity : pattern.indexOf('?')
+            );
+            const patternPrefix = wildcardIndex > 0 ? pattern.substring(0, wildcardIndex) : '';
+            const s3Prefix = pathPrefix + patternPrefix;
+
+            // Convert glob pattern to regex for filtering
+            const regexPattern = '^' + pattern
+                .replace(/\./g, '\\.')
+                .replace(/\*/g, '.*')
+                .replace(/\?/g, '.') + '$';
+            const filterRegex = new RegExp(regexPattern);
+
+            try {
+                let allKeys = [];
+                let continuationToken = null;
+
+                // Paginate through S3 listing results
+                do {
+                    let listUrl = `${s3ListBase}?list-type=2&prefix=${encodeURIComponent(s3Prefix)}&max-keys=1000`;
+                    if (continuationToken) {
+                        listUrl += `&continuation-token=${encodeURIComponent(continuationToken)}`;
+                    }
+                    console.log('Fetching S3 listing:', listUrl);
+
+                    const response = await fetch(listUrl);
+                    if (!response.ok) {
+                        throw new Error(`S3 listing failed: ${response.status}`);
+                    }
+
+                    const text = await response.text();
+                    const parser = new DOMParser();
+                    const xml = parser.parseFromString(text, 'text/xml');
+
+                    const keys = Array.from(xml.querySelectorAll('Key')).map(k => k.textContent);
+                    allKeys.push(...keys);
+
+                    const isTruncated = xml.querySelector('IsTruncated')?.textContent === 'true';
+                    continuationToken = isTruncated
+                        ? xml.querySelector('NextContinuationToken')?.textContent
+                        : null;
+                } while (continuationToken);
+
+                console.log(`Found ${allKeys.length} objects under prefix "${s3Prefix}"`);
+
+                // Filter keys that match the pattern
+                const matches = allKeys.filter(key => {
+                    const relativePath = key.substring(pathPrefix.length);
+                    return filterRegex.test(relativePath);
+                });
+                console.log(`Filtered to ${matches.length} files matching "${pattern}"`);
+
+                // Convert S3 keys back to data.source.coop HTTP URLs
+                const fullUrls = matches.map(key =>
+                    `https://data.source.coop/${key}`
+                );
+
+                return fullUrls.length > 0 ? fullUrls : [basePath + pattern];
+            } catch (e) {
+                console.error('Source.coop wildcard expansion failed:', e);
+                return [basePath + pattern];
+            }
+        }
+
         // Expand wildcards for Google Cloud Storage using prefix-based listing
         async function expandGCSWildcards(pattern, basePath) {
             console.log('Expanding GCS pattern:', pattern, 'with basePath:', basePath);

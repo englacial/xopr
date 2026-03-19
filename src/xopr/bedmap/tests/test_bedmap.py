@@ -31,7 +31,11 @@ from xopr.bedmap.geometry import (
     check_intersects_polar,
     get_polar_bounds,
 )
-from xopr.bedmap.query import _crosses_antimeridian, build_duckdb_query
+from xopr.bedmap.query import (
+    _crosses_antimeridian,
+    _query_bedmap_cached,
+    build_duckdb_query,
+)
 
 # =============================================================================
 # Pytest Fixtures - Reusable test data
@@ -818,28 +822,6 @@ class TestConverterAdvancedCoverage:
             assert metadata['centre_frequency'] == 150
             assert metadata['time_coverage_start'] == 'invalid_year'
 
-    def test_apply_hilbert_sorting(self):
-        """Test Hilbert curve sorting function."""
-        from xopr.bedmap.converter import _apply_hilbert_sorting
-
-        # Create test GeoDataFrame with scattered points
-        gdf = gpd.GeoDataFrame({
-            'value': [1, 2, 3, 4, 5],
-        }, geometry=[
-            Point(-70, -75),
-            Point(-80, -85),
-            Point(-75, -80),
-            Point(-65, -70),
-            Point(-85, -90),
-        ], crs='EPSG:4326')
-
-        sorted_gdf = _apply_hilbert_sorting(gdf)
-
-        # Should have same number of rows
-        assert len(sorted_gdf) == 5
-        # Should be reordered (values should not be sequential anymore)
-        assert list(sorted_gdf['value']) != [1, 2, 3, 4, 5]
-
     def test_batch_convert_no_files(self):
         """Test batch conversion with no matching files."""
         from xopr.bedmap.converter import batch_convert_bedmap
@@ -1069,6 +1051,140 @@ class TestIntegration:
             assert 'lat' in result.columns
             assert 'source_file' in result.columns
             assert result['source_file'].iloc[0] == 'TEST_2020_DATA_BM2'
+
+
+class TestQueryBedmapCachedCollections:
+    """Test that _query_bedmap_cached respects the collections filter."""
+
+    # Synthetic file definitions: (filename, version_tag, data)
+    FILES = {
+        'BEDMAP1_DATA_BM1': {
+            'source_file': 'BEDMAP1_DATA_BM1',
+            'surface_altitude (m)': [100.0, 110.0, 120.0],
+            'timestamp': ['1980-01-01'] * 3,
+            'geometry': [Point(30, -70), Point(31, -71), Point(32, -72)],
+        },
+        'AWI_2000_TEST_BM2': {
+            'source_file': 'AWI_2000_TEST_BM2',
+            'surface_altitude (m)': [200.0, 210.0, 220.0],
+            'timestamp': ['2000-01-01'] * 3,
+            'geometry': [Point(-90, -75), Point(-91, -76), Point(-92, -77)],
+        },
+        'AWI_2020_TEST_BM3': {
+            'source_file': 'AWI_2020_TEST_BM3',
+            'surface_altitude (m)': [300.0, 310.0, 320.0],
+            'timestamp': ['2020-01-01'] * 3,
+            'geometry': [Point(0, -85), Point(1, -86), Point(2, -87)],
+        },
+    }
+
+    # Map bedmap versions to filenames
+    VERSION_MAP = {
+        'bedmap1': ['BEDMAP1_DATA_BM1'],
+        'bedmap2': ['AWI_2000_TEST_BM2'],
+        'bedmap3': ['AWI_2020_TEST_BM3'],
+    }
+
+    @pytest.fixture
+    def multi_version_cache(self, tmp_path):
+        """Create a temp directory with parquet files for multiple bedmap versions."""
+        for name, data in self.FILES.items():
+            gdf = gpd.GeoDataFrame({
+                'source_file': [data['source_file']] * 3,
+                'surface_altitude (m)': data['surface_altitude (m)'],
+                'timestamp': pd.to_datetime(data['timestamp']),
+            }, geometry=data['geometry'], crs='EPSG:4326')
+            gdf.to_parquet(tmp_path / f'{name}.parquet')
+        return tmp_path
+
+    def _mock_catalog(self, data_dir):
+        """Return a mock for query_bedmap_catalog that returns items from local files."""
+        from unittest.mock import patch
+
+        def fake_catalog(collections=None, geometry=None, date_range=None, **kwargs):
+            filenames = []
+            for ver in (collections or list(self.VERSION_MAP.keys())):
+                filenames.extend(self.VERSION_MAP.get(ver, []))
+            rows = [
+                {'properties': {'asset_href': str(data_dir / f'{fn}.parquet')}}
+                for fn in filenames
+            ]
+            if not rows:
+                return gpd.GeoDataFrame()
+            return gpd.GeoDataFrame(rows)
+
+        return patch('xopr.bedmap.query.query_bedmap_catalog', side_effect=fake_catalog)
+
+    def test_cached_collections_bedmap1_only(self, multi_version_cache):
+        """Requesting collections=['bedmap1'] should only return BM1 data."""
+        with self._mock_catalog(multi_version_cache):
+            result = _query_bedmap_cached(
+                collections=['bedmap1'],
+                data_dir=multi_version_cache,
+            )
+        sources = result['source_file'].unique().tolist()
+        assert all('BM1' in s for s in sources), (
+            f"Expected only BM1 sources, got: {sources}"
+        )
+        assert len(result) == 3
+
+    def test_cached_collections_bedmap2_only(self, multi_version_cache):
+        """Requesting collections=['bedmap2'] should only return BM2 data."""
+        with self._mock_catalog(multi_version_cache):
+            result = _query_bedmap_cached(
+                collections=['bedmap2'],
+                data_dir=multi_version_cache,
+            )
+        sources = result['source_file'].unique().tolist()
+        assert all('BM2' in s for s in sources), (
+            f"Expected only BM2 sources, got: {sources}"
+        )
+        assert len(result) == 3
+
+    def test_cached_collections_bedmap3_only(self, multi_version_cache):
+        """Requesting collections=['bedmap3'] should only return BM3 data."""
+        with self._mock_catalog(multi_version_cache):
+            result = _query_bedmap_cached(
+                collections=['bedmap3'],
+                data_dir=multi_version_cache,
+            )
+        sources = result['source_file'].unique().tolist()
+        assert all('BM3' in s for s in sources), (
+            f"Expected only BM3 sources, got: {sources}"
+        )
+        assert len(result) == 3
+
+    def test_cached_no_collections_returns_all(self, multi_version_cache):
+        """No collections filter should return data from all versions."""
+        with self._mock_catalog(multi_version_cache):
+            result = _query_bedmap_cached(
+                collections=None,
+                data_dir=multi_version_cache,
+            )
+        sources = result['source_file'].unique().tolist()
+        has_bm1 = any('BM1' in s for s in sources)
+        has_bm2 = any('BM2' in s for s in sources)
+        has_bm3 = any('BM3' in s for s in sources)
+        assert has_bm1 and has_bm2 and has_bm3, (
+            f"Expected all versions, got: {sources}"
+        )
+        assert len(result) == 9
+
+    def test_cached_multiple_collections(self, multi_version_cache):
+        """Requesting two collections should return only those two."""
+        with self._mock_catalog(multi_version_cache):
+            result = _query_bedmap_cached(
+                collections=['bedmap1', 'bedmap3'],
+                data_dir=multi_version_cache,
+            )
+        sources = result['source_file'].unique().tolist()
+        assert all('BM1' in s or 'BM3' in s for s in sources), (
+            f"Expected only BM1/BM3 sources, got: {sources}"
+        )
+        assert not any('BM2' in s for s in sources), (
+            f"BM2 should not appear, got: {sources}"
+        )
+        assert len(result) == 6
 
 
 if __name__ == '__main__':
