@@ -30,6 +30,9 @@ project:
         - file: notebooks/reading_params.ipynb
         - file: notebooks/crossovers.ipynb
         - file: notebooks/bed_picks.ipynb
+        - file: notebooks/qc_demo.ipynb
+        - file: notebooks/nonstandard_data_products.ipynb
+        - file: notebooks/repicking.ipynb
     
 site:
   template: book-theme
