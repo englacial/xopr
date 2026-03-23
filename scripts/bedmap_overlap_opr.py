@@ -156,10 +156,10 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
     for segment in gdf_opr.itertuples():
         gdf_unlabelled = gdf_bedmap_dense[~gdf_bedmap_dense.opr_id.notna()]
         # Get cartesian distance from all unlabelled BedMAP points to sparse OPR line
-        gdf_: pd.Series = gdf_unlabelled.distance(other=segment.geometry)
+        df_dist: pd.Series = gdf_unlabelled.distance(other=segment.geometry)
 
         TOLERANCE: float = 0.8
-        dist_match: pd.Series = gdf_[gdf_ < TOLERANCE].drop_duplicates()
+        dist_match: pd.Series = df_dist[df_dist < TOLERANCE].drop_duplicates()
 
         if len(dist_match) == 0:
             print(f"⛔ Failed to match OPR segment {segment.id}, reason: no matches")
@@ -170,16 +170,44 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
         else:  # >=2, potentially have match
             head = int(dist_match.head(n=1).index[0])
             tail = int(dist_match.tail(n=1).index[0])
-            # gdf_.loc[head:tail].plot(ylabel="distance (m)")
 
+            # Verify distance-based match, shift head and tail points if needed
             # Fast match against sparse OPR points (if everything less than 200m away..)
-            if all(gdf_.loc[head:tail] < 200):
-                print(
+            attempt: int = 0
+            original_head = head
+            original_tail = tail
+            while attempt <= 2:
+                if all(df_dist.loc[head:tail] < 200):
+                    print(
                     f"🙌 OPR segment {segment.id} "
                     f"matches BedMap points {head}:{tail} (dist-based check)"
                 )
-                gdf_bedmap_dense.loc[head:tail, "opr_id"] = segment.id  # label
-            else:
+                    gdf_bedmap_dense.loc[head:tail, "opr_id"] = segment.id  # label
+                    break
+                else:
+                    print(
+                        f"  Trying to match segment {segment.id} "
+                        f"with new point bounds for range {head}:{tail}"
+                    )
+                    # find inflexion point based on sudden distance change
+                    df_dist_delta = df_dist.loc[original_head:original_tail].pct_change(
+                        periods=1
+                    )
+                    if attempt == 0:
+                        # Try shifting tail first
+                        tail = int(df_dist_delta[df_dist_delta > 200].index[0])
+                    elif attempt == 1:
+                        # Try shifting head next
+                        tail = original_tail
+                        head = int(df_dist_delta[df_dist_delta > 200].index[0])
+                    elif attempt == 2:
+                        head = original_head
+                        tail = original_tail
+
+                attempt += 1
+
+            # Time-based fallback
+            if attempt == 3:
                 print(
                     f"  Trying to match segment {segment.id} "
                     f"with timestamps for range {head}:{tail}"
@@ -189,13 +217,20 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
                 time_match: pd.Series = df_times[
                     (df_times - segment.datetime) < TIMESPAN
                 ]
+                # (df_times - segment.datetime).plot(ylabel="timespan")
 
                 if len(time_match) >= 2:
-                    head_ = int(time_match.head(n=1).index[0])
+                    head = int(time_match.head(n=1).index[0])
                     tail_ = int(time_match.tail(n=1).index[0])
+                    df_time_delta = df_times.loc[head:tail_].diff(periods=1)
+                    tail = int(
+                        df_time_delta[
+                            df_time_delta > pd.Timedelta(value=1, unit="hour")
+                        ].index[0]
+                    )
                     print(
                         f"🙌 OPR segment {segment.id} "
-                        f"matches BedMap points {head_}:{tail_} (time-based check)"
+                        f"matches BedMap points {head}:{tail} (time-based check)"
                     )
                     gdf_bedmap_dense.loc[head:tail, "opr_id"] = segment.id  # label
                     continue
