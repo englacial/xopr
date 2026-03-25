@@ -7,10 +7,16 @@ Uses custom logic for exact matching of OPR linestrings to BedMap points.
 import io
 import os
 import re
+import tempfile
+import urllib.request
 
 import geopandas as gpd
+import h5py
 import obstore as obs
 import pandas as pd
+import shapely
+import pyproj
+import shapely.geometry
 
 
 # %%
@@ -28,6 +34,38 @@ async def aio_read_parquet(store: obs.store.ObjectStore, path: str) -> gpd.GeoDa
     gdf: gpd.GeoDataFrame = gpd.read_parquet(path=io.BytesIO(bytes_))
     return gdf
 
+
+# %%
+transformer = pyproj.Transformer.from_crs(
+    crs_from="OGC:CRS84", crs_to="EPSG:3031", always_xy=True
+)
+
+
+def mat_to_linestring(url: str) -> shapely.geometry.LineString:
+    """
+    Read .mat file from CReSIS containing OPR data in Lon/Lat, and reproject to an
+    Antarctic Polar Stereographic (EPSG:3031) linestring.
+
+    Returns
+    -------
+    shapely.geometry.LineString
+
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mat_fpath = os.path.basename(p := url)  # e.g. Data_20101026_01_001.mat
+        file_name = os.path.join(tmpdir, mat_fpath)
+        urllib.request.urlretrieve(url=p, filename=file_name)  # download to tempfile
+        dat = h5py.File(name=file_name)
+
+        return shapely.geometry.LineString(
+            gpd.points_from_xy(
+                *transformer.transform(
+                    xx=dat["Longitude"][:].squeeze(),
+                    yy=dat["Latitude"][:].squeeze(),
+                ),
+                crs="EPSG:3031",
+            )
+        )
 
 # %%
 # Load BedMap2 and BedMap3 catalog, filter/query by institution
@@ -206,39 +244,51 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
 
                 attempt += 1
 
-            # Time-based fallback
+            # Slow fallback using dense OPR xy points
             if attempt == 3:
                 print(
                     f"  Trying to match segment {segment.id} "
-                    f"with timestamps for range {head}:{tail}"
+                    f"with dense OPR points (slow) for range {head}:{tail}"
                 )
-                df_times: pd.Series = gdf_unlabelled.loc[head:tail].timestamp
-                TIMESPAN = pd.Timedelta(value=2, unit="days")
-                time_match: pd.Series = df_times[
-                    (df_times - segment.datetime) < TIMESPAN
-                ]
-                # (df_times - segment.datetime).plot(ylabel="timespan")
+                # OPR (dense XY points)
+                opr_dense_geom: shapely.geometry.LineString = mat_to_linestring(
+                    url=segment.assets["data"]["href"]
+                )
+                df_dist_dense: pd.Series = gdf_unlabelled.loc[head:tail].distance(
+                    other=opr_dense_geom
+                )
+                # df_dist_dense.plot(ylabel="distance (m)")
 
-                if len(time_match) >= 2:
-                    head = int(time_match.head(n=1).index[0])
-                    tail_ = int(time_match.tail(n=1).index[0])
-                    df_time_delta = df_times.loc[head:tail_].diff(periods=1)
-                    tail = int(
-                        df_time_delta[
-                            df_time_delta > pd.Timedelta(value=1, unit="hour")
-                        ].index[0]
-                    )
+                # Ensure all BedMAP points in series are <1m away from OPR segment
+                if not all(df_dist_dense < 1.0):
+                    # Try and narrow down segments once more with stricter tolerance
+                    tolerance_ = 0.001
+                    dist_match_new: pd.Series = df_dist_dense[
+                        df_dist_dense < tolerance_
+                    ].drop_duplicates()
+                    # TODO find a way to drop points if there is no two consecutive? or two within 100 ids?
+                    # dist_match_new.plot(ylabel="distance (m)")
+                    head_ = int(dist_match_new.head(n=1).index[0])
+                    tail_ = int(dist_match_new.tail(n=1).index[0])
+                    # df_dist_dense.loc[head_:tail_].plot()
+                    if all(df_dist_dense.loc[head_:tail_] < 0.5):
+                        print(
+                            f"🙌 OPR segment {segment.id} matches BedMap points {head_}:{tail_} (slow)"
+                        )
+                        continue
+                    else:
+                        print(
+                            f"Failed to match OPR segment {segment.id}, reason: too many distant points"
+                        )
+                        raise ValueError("temp")
+                else:
                     print(
-                        f"🙌 OPR segment {segment.id} "
-                        f"matches BedMap points {head}:{tail} (time-based check)"
+                        f"🙌 OPR segment {segment.id} matches BedMap points {head}:{tail} (slow)"
                     )
                     gdf_bedmap_dense.loc[head:tail, "opr_id"] = segment.id  # label
                     continue
-                else:
-                    print(
-                        f"⛔ Failed to match OPR segment {segment.id}, "
-                        "reason: no spatiotemporal matches"
-                    )
+
+            #
 
     basename = os.path.basename(path).replace(".parquet", "")
     gdf_bedmap_dense.to_file(filename := f"data/{basename}.gpkg")
