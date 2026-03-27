@@ -231,6 +231,10 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
                     df_dist_delta = df_dist.loc[original_head:original_tail].pct_change(
                         periods=1
                     )
+                    if len(df_dist_delta[df_dist_delta > 200]) == 0:
+                        attempt = 3
+                        continue
+
                     if attempt == 0:
                         # Try shifting tail first
                         tail = int(df_dist_delta[df_dist_delta > 200].index[0])
@@ -248,7 +252,7 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
             if attempt == 3:
                 print(
                     f"  Trying to match segment {segment.id} "
-                    f"with dense OPR points (slow) for range {head}:{tail}"
+                    f"with dense OPR points for range {head}:{tail}"
                 )
                 # OPR (dense XY points)
                 opr_dense_geom: shapely.geometry.LineString = mat_to_linestring(
@@ -278,9 +282,9 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
                         continue
                     else:
                         print(
-                            f"Failed to match OPR segment {segment.id}, reason: too many distant points"
+                            f"⛔ Failed to match OPR segment {segment.id}, reason: too many distant points"
                         )
-                        raise ValueError("temp")
+                        # raise ValueError("temp")
                 else:
                     print(
                         f"🙌 OPR segment {segment.id} matches BedMap points {head}:{tail} (slow)"
@@ -293,6 +297,7 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
     basename = os.path.basename(path).replace(".parquet", "")
     gdf_bedmap_dense.to_file(filename := f"data/{basename}.gpkg")
     print(f"Saved dense BedMAP points labelled with OPR ids to {filename}")
+    print()
 
     # break  # TODO work on more years
 print("Done!")
