@@ -635,6 +635,9 @@ def query_bedmap(
         warnings.warn("No asset URLs found in catalog items")
         return gpd.GeoDataFrame()
 
+    # Convert cloud storage URLs (gs://, s3://) to public HTTPS for DuckDB
+    parquet_urls = [_gs_to_https(url) for url in parquet_urls]
+
     # Build and execute DuckDB query
     print(f"Querying {len(parquet_urls)} GeoParquet files...")
 
