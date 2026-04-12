@@ -52,6 +52,7 @@ docs = [
     "jupyter_bokeh",
     "rioxarray",
     "verde",
+    "earthaccess",
     "pdoc>=14.0.0",
 ]
 test = [
