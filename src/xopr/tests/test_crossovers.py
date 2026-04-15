@@ -16,6 +16,7 @@ from xopr.crossovers import (
     match_frames_to_granules,
     match_frames_to_granules_prefix,
     resolve_temporal_window,
+    subset_frames_by_points,
 )
 
 
@@ -295,6 +296,57 @@ def test_match_frames_prefix_missing_mbox_raises():
     ])
     with pytest.raises(ValueError, match='opr:mbox'):
         match_frames_to_granules_prefix(frames, records)
+
+
+def test_subset_frames_by_points_basic():
+    frames = _make_frames_gdf()
+    # (-76.0, -67.5) is inside frame 1; (-78.0, -62.5) inside frame 2.
+    # (0, 0) falls inside neither.
+    pts = [(-76.0, -67.5), (-78.0, -62.5), (0.0, 0.0)]
+    subset = subset_frames_by_points(frames, pts)
+    ids = list(subset['id'])
+    assert 'Data_20191020_05_001' in ids
+    assert 'Data_20191020_05_002' in ids
+    assert len(subset) == 2
+
+
+def test_subset_frames_by_points_only_one():
+    frames = _make_frames_gdf()
+    subset = subset_frames_by_points(frames, [(-76.0, -67.5)])
+    assert len(subset) == 1
+    assert subset.iloc[0]['opr:frame'] == 1
+
+
+def test_subset_frames_by_points_none_match():
+    frames = _make_frames_gdf()
+    subset = subset_frames_by_points(frames, [(0.0, 0.0)])
+    assert len(subset) == 0
+    assert list(subset.columns) == list(frames.columns)
+
+
+def test_subset_frames_by_points_empty_input():
+    frames = _make_frames_gdf()
+    subset = subset_frames_by_points(frames, np.empty((0, 2)))
+    assert len(subset) == 0
+
+
+def test_subset_frames_by_points_accepts_numpy_array():
+    frames = _make_frames_gdf()
+    arr = np.array([[-76.0, -67.5]])
+    subset = subset_frames_by_points(frames, arr)
+    assert len(subset) == 1
+
+
+def test_subset_frames_by_points_missing_mbox_raises():
+    frames = _make_frames_gdf().drop(columns=['opr:mbox'])
+    with pytest.raises(ValueError, match='opr:mbox'):
+        subset_frames_by_points(frames, [(-76.0, -67.5)])
+
+
+def test_subset_frames_by_points_bad_shape_raises():
+    frames = _make_frames_gdf()
+    with pytest.raises(ValueError, match=r'\(N, 2\)'):
+        subset_frames_by_points(frames, [1, 2, 3])
 
 
 def test_granule_polygon_reprojection_is_3031():

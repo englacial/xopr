@@ -293,6 +293,70 @@ def match_frames_to_granules(
     return out
 
 
+def subset_frames_by_points(frames_gdf, points, order=18):
+    """Subset a frames GeoDataFrame to frames whose ``opr:mbox`` contains any
+    of the given points.
+
+    For each ``(lat, lon)`` point we compute an order-``order`` morton index,
+    then select every frame whose ``opr:mbox`` has at least one cell whose
+    string is a prefix of that point morton. Same containment test as
+    :mod:`xopr.bedmap.morton_match`, reused here as a fast pre-filter.
+
+    Parameters
+    ----------
+    frames_gdf : GeoDataFrame
+        Must have an ``opr:mbox`` column (list of 4 morton cell ints).
+    points : array-like
+        Sequence of ``(lat, lon)`` pairs or a ``(N, 2)`` array.
+    order : int
+        Morton tessellation order used to encode the points. Default 18
+        (matches ``opr:mbox``).
+
+    Returns
+    -------
+    GeoDataFrame
+        Rows from ``frames_gdf`` (same schema, original row order, no
+        duplicates) where at least one point falls inside at least one
+        mbox cell.
+    """
+    if "opr:mbox" not in frames_gdf.columns:
+        raise ValueError(
+            "frames_gdf is missing 'opr:mbox'; load a catalog produced after "
+            "xopr PR #77 (see issue #78 for deployment status)."
+        )
+
+    pts = np.asarray(points, dtype=float)
+    if pts.ndim != 2 or pts.shape[1] != 2:
+        raise ValueError(
+            f"points must be an (N, 2) array of (lat, lon); got shape {pts.shape}"
+        )
+    if pts.shape[0] == 0:
+        return frames_gdf.iloc[0:0].copy()
+
+    from collections import defaultdict
+
+    prefix_to_frames = defaultdict(list)
+    for f_idx, mbox in enumerate(frames_gdf["opr:mbox"].values):
+        for cell in mbox:
+            prefix_to_frames[str(int(cell))].append(f_idx)
+
+    distinct_lengths = sorted({len(p) for p in prefix_to_frames})
+
+    mortons = geo2mort(pts[:, 0], pts[:, 1], order=order)
+    matched = set()
+    for m in mortons:
+        ms = str(m)
+        ms_len = len(ms)
+        for L in distinct_lengths:
+            if L > ms_len:
+                break
+            hit_frames = prefix_to_frames.get(ms[:L])
+            if hit_frames is not None:
+                matched.update(hit_frames)
+
+    return frames_gdf.iloc[sorted(matched)].copy()
+
+
 ICESAT2_LAUNCH = "2018-10-13"
 _ICESAT2_CYCLE_DAYS = 91
 
@@ -569,6 +633,7 @@ __all__ = [
     "compute_granule_sample_mortons",
     "build_granule_prefix_index",
     "match_frames_to_granules_prefix",
+    "subset_frames_by_points",
     "resolve_temporal_window",
     "cycle_to_dates",
     "ICESAT2_LAUNCH",
