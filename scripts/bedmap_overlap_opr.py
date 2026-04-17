@@ -175,7 +175,9 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
     assert len(gdf_bedmap) == 1  # always 1
 
     # BedMAP2 (dense XY points)
-    path = gdf_bedmap.asset_href.iloc[0].replace("gs://opr_stac/bedmap/", "bedmap/")
+    path = gdf_bedmap.asset_href.iloc[0].replace(
+        "s3://us-west-2.opendata.source.coop/englacial/bedmap/", "bedmap/"
+    )
     gdf_bedmap_dense = (await aio_read_parquet(store=store, path=path)).to_crs(
         epsg=3031
     )
@@ -250,6 +252,28 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
 
             # Slow fallback using dense OPR xy points
             if attempt == 3:
+                # Apply temporal filter to reduce points to look at
+                df_times: pd.Series = gdf_unlabelled.loc[head:tail].timestamp
+                TIMESPAN = pd.Timedelta(value=2, unit="days")
+                time_match: pd.Series = df_times[
+                    (df_times - segment.datetime) < TIMESPAN
+                ]
+                # (df_times - segment.datetime).plot(ylabel="timespan")
+                if len(time_match) >= 2:
+                    head = int(time_match.head(n=1).index[0])
+                    tail = int(time_match.tail(n=1).index[0])  # tail_ = int(...)
+                    # df_time_delta = df_times.loc[head:tail_].diff(periods=1)
+                    # tail = int(
+                    #     df_time_delta[
+                    #         df_time_delta > pd.Timedelta(value=1, unit="hour")
+                    #     ].index[0]
+                    # )
+                else:
+                    print(
+                        f"⛔ Failed to match OPR segment {segment.id}, reason: no close time matches"
+                    )
+                    continue
+                # Continue with checking using dense XY points after temporal filter
                 print(
                     f"  Trying to match segment {segment.id} "
                     f"with dense OPR points for range {head}:{tail}"
