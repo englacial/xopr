@@ -4,8 +4,9 @@ data:
   provider: cresis
   primary_product: CSARP_standard
   extra_products:
-  - CSARP_layer
   - CSARP_qlook
+  - CSARP_mvdr
+  - CSARP_layer
   campaigns:
     include:
     - 2017_Antarctica_P3

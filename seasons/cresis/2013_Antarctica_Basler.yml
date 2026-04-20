@@ -4,7 +4,6 @@ data:
   provider: cresis
   primary_product: CSARP_standard
   extra_products:
-  - CSARP_qlook
   - CSARP_mvdr
   - CSARP_music
   - CSARP_layer

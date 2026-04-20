@@ -4,6 +4,7 @@ data:
   provider: cresis
   primary_product: CSARP_standard
   extra_products:
+  - CSARP_qlook
   - CSARP_layer
   campaigns:
     include:

@@ -3,7 +3,8 @@ data:
   root: /kucresis/scratch/dataproducts/public/data/rds
   provider: cresis
   primary_product: CSARP_standard
-  extra_products: []
+  extra_products:
+  - CSARP_qlook
   campaigns:
     include:
     - 2009_Antarctica_TO
