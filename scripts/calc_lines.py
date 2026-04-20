@@ -21,6 +21,11 @@ try:
 
     # Connect to parquet files
     client = DuckdbClient()
+    # Force path-style S3 addressing: the bucket name contains dots, which
+    # break Amazon's wildcard TLS cert when used virtual-hosted-style.
+    client.execute("SET s3_url_style='path'")
+    client.execute("SET s3_region='us-west-2'")
+    client.execute("SET s3_endpoint='s3.us-west-2.amazonaws.com'")
     partitioned_destination = 's3://us-west-2.opendata.source.coop/englacial/xopr/catalog/**/*parquet'
 
     # Define regions
