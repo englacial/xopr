@@ -5,13 +5,27 @@ Each template captures the full provenance needed to reproducibly build and
 upload the hive-partitioned parquet catalogs hosted on
 [source.coop/englacial/xopr](https://source.coop/englacial/xopr).
 
+## Layout
+
+Top-level subdirectories group templates by data provider (matches the
+`provider=` hive partition on source.coop):
+
+```
+seasons/
+  cresis/        # CReSIS (University of Kansas) — Greenland + Antarctica
+  utig/          # University of Texas Institute for Geophysics (BaslerJKB, BaslerMKB)
+    pending/     # Known seasons without a STAC catalog yet (draft yml, not yet processed)
+  awi/           # Alfred Wegener Institute (Polar6)
+  dtu/           # Technical University of Denmark
+```
+
 ## Naming convention
 
 ```
 {year}_{region}_{platform}.yml
 ```
 
-Examples: `2008_Antarctica_BaslerJKB.yml`, `2016_Antarctica_DC8.yml`
+Examples: `cresis/2008_Antarctica_BaslerJKB.yml`, `cresis/2016_Antarctica_DC8.yml`
 
 The name matches the CReSIS campaign directory name and becomes the STAC
 collection ID.
@@ -126,13 +140,13 @@ sci:
 ## Building a catalog
 
 ```bash
-python scripts/build_catalog.py --config seasons/2008_Antarctica_BaslerJKB.yml
+python scripts/build_catalog.py --config seasons/utig/2008_Antarctica_BaslerJKB.yml
 ```
 
 Override any field from the command line:
 
 ```bash
-python scripts/build_catalog.py --config seasons/2008_Antarctica_BaslerJKB.yml \
+python scripts/build_catalog.py --config seasons/utig/2008_Antarctica_BaslerJKB.yml \
   processing.n_workers=8 \
   processing.max_items=10
 ```
@@ -165,6 +179,9 @@ python scripts/upload_stac_catalogs.py catalog/2008_Antarctica_BaslerJKB/ \
   --credentials ~/.source_coop_token.json --execute
 ```
 
+The uploader reads `data.provider` from the yml and places the parquet into
+the matching `provider=<provider>` hive partition.
+
 Files are placed into the hive-partitioned layout on S3:
 
 ```
@@ -180,17 +197,26 @@ each time.
 
 ## Adding a new season
 
-1. Copy an existing template:
+1. Copy an existing template from the matching provider subfolder:
    ```bash
-   cp seasons/2008_Antarctica_BaslerJKB.yml seasons/2024_Antarctica_NewPlatform.yml
+   cp seasons/cresis/2016_Antarctica_DC8.yml seasons/cresis/2024_Antarctica_NewPlatform.yml
    ```
 2. Edit the new file — update `data.root`, `data.campaigns.include`,
    `output.path`, `assets.base_url`, `sci.*`, etc.
 3. Build and verify:
    ```bash
-   python scripts/build_catalog.py --config seasons/2024_Antarctica_NewPlatform.yml
+   python scripts/build_catalog.py --config seasons/cresis/2024_Antarctica_NewPlatform.yml
    ```
 4. Commit the template:
    ```bash
-   git add seasons/2024_Antarctica_NewPlatform.yml
+   git add seasons/cresis/2024_Antarctica_NewPlatform.yml
    ```
+
+## Pending seasons
+
+`utig/pending/` holds draft yml for known UTIG seasons that do **not** yet
+have a STAC catalog on source.coop. The drafts use `radar.override: false`
+(letting the build discover bandwidth from per-file `.mat` headers) because
+we have not yet extracted those values from the source data. When a pending
+season is processed into a real catalog, move the yml out of `pending/` and
+fill in explicit `radar.f0` / `radar.f1` values from the generated parquet.

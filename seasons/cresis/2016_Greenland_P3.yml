@@ -4,16 +4,15 @@ data:
   provider: cresis
   primary_product: CSARP_standard
   extra_products:
-  - CSARP_qlook
-  - CSARP_mvdr
   - CSARP_layer
+  - CSARP_qlook
   campaigns:
     include:
-    - 2016_Antarctica_DC8
+    - 2016_Greenland_P3
     exclude: []
   campaign_filter: ''
 output:
-  path: ../catalog/2016_Antarctica_DC8
+  path: ../catalog/2016_Greenland_P3
   catalog_id: OPR-CReSIS
   catalog_description: Open Polar Radar CRESIS airborne data
   license: CC0-1.0

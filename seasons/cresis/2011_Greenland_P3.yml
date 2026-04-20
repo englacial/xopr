@@ -1,0 +1,36 @@
+version: 1.0.0
+data:
+  root: /kucresis/scratch/dataproducts/public/data/rds
+  provider: cresis
+  primary_product: CSARP_standard
+  extra_products:
+  - CSARP_layer
+  campaigns:
+    include:
+    - 2011_Greenland_P3
+    exclude: []
+  campaign_filter: ''
+output:
+  path: ../catalog/2011_Greenland_P3
+  catalog_id: OPR-CReSIS
+  catalog_description: Open Polar Radar CRESIS airborne data
+  license: CC0-1.0
+processing:
+  n_workers: 20
+  memory_limit: 8GB
+  max_items: null
+assets:
+  base_url: https://data.cresis.ku.edu/data/rds/
+logging:
+  verbose: false
+  level: INFO
+geometry:
+  simplify: true
+  tolerance: 100.0
+radar:
+  f0: 180000000
+  f1: 210000000
+  override: true
+sci:
+  citation: "CReSIS. 2026. MCoRDS Data, Lawrence, Kansas, USA. Digital Media. http://data.cresis.ku.edu/ . We acknowledge the use of data and/or data products from CReSIS generated with support from the University of Kansas, NASA Operation IceBridge grant NNX16AH54G, NSF grants ACI-1443054, OPP-1739003, and IIS-1838230, Lilly Endowment Incorporated, and Indiana METACyt Initiative."
+  override: true

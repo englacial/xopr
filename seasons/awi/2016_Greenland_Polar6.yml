@@ -1,0 +1,32 @@
+version: 1.0.0
+data:
+  root: /kucresis/scratch/dataproducts/public/data/rds
+  provider: awi
+  primary_product: CSARP_standard
+  extra_products: []
+  campaigns:
+    include:
+    - 2016_Greenland_Polar6
+    exclude: []
+  campaign_filter: ''
+output:
+  path: ../catalog/2016_Greenland_Polar6
+  catalog_id: OPR-CReSIS
+  catalog_description: Open Polar Radar AWI airborne data from Polar6 aircraft
+  license: CC0-1.0
+processing:
+  n_workers: 20
+  memory_limit: 8GB
+  max_items: null
+assets:
+  base_url: https://data.cresis.ku.edu/data/rds/
+logging:
+  verbose: false
+  level: INFO
+geometry:
+  simplify: true
+  tolerance: 100.0
+radar:
+  f0: 150000000
+  f1: 520000000
+  override: true
