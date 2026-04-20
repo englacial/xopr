@@ -511,6 +511,17 @@ def export_collection_to_parquet(
     # as list<null> which downstream tools (e.g. stac-wasm) cannot
     # deserialize. Cast to the correct STAC link struct type.
     table = record_batch_reader.read_all()
+
+    # Enforce int type for opr:frequency/opr:bandwidth per OPR extension schema.
+    # Inferred from item values — fail loudly if any item slipped through as float.
+    for field_name in ('opr:frequency', 'opr:bandwidth'):
+        idx = table.schema.get_field_index(field_name)
+        if idx != -1 and not pa.types.is_integer(table.schema.field(idx).type):
+            raise ValueError(
+                f"{field_name} must be integer per OPR extension schema, got "
+                f"{table.schema.field(idx).type}"
+            )
+
     links_field = table.schema.field('links')
     if pa.types.is_null(links_field.type.value_type):
         links_type = pa.list_(pa.struct([

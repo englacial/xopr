@@ -239,8 +239,10 @@ class TestSTACValidation:
         assert collection_dict['sci:doi'] == TEST_DOI, "DOI should be aggregated"
         assert collection_dict['sci:citation'] == TEST_CITATION, "Citation should be aggregated"
         # Check OPR properties instead of SAR properties
-        assert collection_dict['opr:frequency'] == 190e6, "Center frequency should be aggregated as opr:frequency"
-        assert collection_dict['opr:bandwidth'] == 50e6, "Bandwidth should be aggregated as opr:bandwidth"
+        assert collection_dict['opr:frequency'] == 190_000_000, "Center frequency should be aggregated as opr:frequency"
+        assert isinstance(collection_dict['opr:frequency'], int), "opr:frequency must be int per OPR extension"
+        assert collection_dict['opr:bandwidth'] == 50_000_000, "Bandwidth should be aggregated as opr:bandwidth"
+        assert isinstance(collection_dict['opr:bandwidth'], int), "opr:bandwidth must be int per OPR extension"
 
     def test_invalid_stac_objects_fail_validation(self):
         """Test that invalid STAC objects are correctly rejected by the validator."""

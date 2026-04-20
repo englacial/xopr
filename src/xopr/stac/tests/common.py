@@ -166,7 +166,7 @@ def create_mock_campaign_data():
     }
 
 
-def create_mock_stac_item(doi=None, citation=None, sar_freq=190e6, sar_bandwidth=50e6):
+def create_mock_stac_item(doi=None, citation=None, sar_freq=190_000_000, sar_bandwidth=50_000_000):
     """Create a mock STAC item for testing.
 
     Parameters
@@ -175,10 +175,10 @@ def create_mock_stac_item(doi=None, citation=None, sar_freq=190e6, sar_bandwidth
         DOI to include in properties, by default None
     citation : str, optional
         Citation to include in properties, by default None
-    sar_freq : float, optional
-        OPR frequency (formerly SAR center frequency), by default 190e6
-    sar_bandwidth : float, optional
-        OPR bandwidth (formerly SAR bandwidth), by default 50e6
+    sar_freq : int, optional
+        OPR frequency in Hz (formerly SAR center frequency), by default 190_000_000
+    sar_bandwidth : int, optional
+        OPR bandwidth in Hz (formerly SAR bandwidth), by default 50_000_000
 
     Returns
     -------
@@ -200,11 +200,11 @@ def create_mock_stac_item(doi=None, citation=None, sar_freq=190e6, sar_bandwidth
     if citation is not None:
         item.properties['sci:citation'] = citation
 
-    # Add OPR properties (formerly SAR properties)
+    # Add OPR properties (formerly SAR properties) — cast to int per OPR extension schema
     if sar_freq is not None:
-        item.properties['opr:frequency'] = sar_freq
+        item.properties['opr:frequency'] = int(sar_freq)
     if sar_bandwidth is not None:
-        item.properties['opr:bandwidth'] = sar_bandwidth
+        item.properties['opr:bandwidth'] = int(sar_bandwidth)
 
     # Mock bbox, datetime, and geometry for extent calculation
     item.bbox = [-69.86, -71.37, -69.84, -71.35]
