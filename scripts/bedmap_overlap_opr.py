@@ -172,6 +172,21 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
 
     # BedMAP2 (simplified/sparse points)
     gdf_bedmap = gdf_cresis.query(expr=f"name.str.contains('{year}')").to_crs(epsg=3031)
+    if len(gdf_bedmap) > 1:  # handle multiple campaigns in one year
+        match shortname:
+            case "2013_Antarctica_P3":
+                campaign = "NASA_2013_ICEBRIDGE_AIR_BM3"
+            case "2013_Antarctica_Basler":
+                campaign = "CRESIS_2013_Siple-Coast_AIR_BM3"
+            case "2009_Antarctica_TO_Gambit":
+                campaign = "CRESIS_2009_AntarcticaTO_AIR_BM3"
+            case "2009_Antarctica_TO":
+                campaign = "CRESIS_2009_Thwaites_AIR_BM3"
+            case "2009_Antarctica_DC8":
+                campaign = "NASA_2009_ICEBRIDGE_AIR_BM2"
+            case _:
+                raise ValueError(f"Update code to set maching campaign for {shortname}")
+        gdf_bedmap = gdf_bedmap.query(expr=f"name == '{campaign}'")
     assert len(gdf_bedmap) == 1  # always 1
 
     # BedMAP2 (dense XY points)
