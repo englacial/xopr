@@ -14,6 +14,7 @@ import geopandas as gpd
 import h5py
 import obstore as obs
 import pandas as pd
+import scipy
 import shapely
 import pyproj
 import shapely.geometry
@@ -46,6 +47,8 @@ def mat_to_linestring(url: str) -> shapely.geometry.LineString:
     Read .mat file from CReSIS containing OPR data in Lon/Lat, and reproject to an
     Antarctic Polar Stereographic (EPSG:3031) linestring.
 
+    Uses `scipy.io.loadmat` for MATLAB 5 files, or `h5py.File` for MATLAB 7.3+ files.
+
     Returns
     -------
     shapely.geometry.LineString
@@ -55,7 +58,11 @@ def mat_to_linestring(url: str) -> shapely.geometry.LineString:
         mat_fpath = os.path.basename(p := url)  # e.g. Data_20101026_01_001.mat
         file_name = os.path.join(tmpdir, mat_fpath)
         urllib.request.urlretrieve(url=p, filename=file_name)  # download to tempfile
-        dat = h5py.File(name=file_name)
+
+        try:
+            dat = scipy.io.loadmat(file_name)  # MATLAB 5 files
+        except NotImplementedError:
+            dat = h5py.File(name=file_name)  # MATLAB 7.3+ files
 
         return shapely.geometry.LineString(
             gpd.points_from_xy(
