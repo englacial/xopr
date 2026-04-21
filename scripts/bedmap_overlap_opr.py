@@ -121,7 +121,9 @@ for batch in stream:
     shortname: str = re.findall(
         pattern=r"collection=(.*)\/stac\.parquet", string=prefix
     )[0]
-    if "2024_" not in shortname:  # skip 2024_Antarctica_GroundGHOST2
+    if (
+        "2024_" not in shortname and "_Gambit" not in shortname
+    ):  # skip 2024_Antarctica_GroundGHOST2 and 2009_Antarctica_TO_Gambit
         prefixes[shortname] = prefix
 for prefix in prefixes.values():
     print(prefix)
@@ -129,7 +131,6 @@ for prefix in prefixes.values():
 # provider=cresis/collection=2004_Antarctica_P3chile/stac.parquet
 # provider=cresis/collection=2009_Antarctica_DC8/stac.parquet
 # provider=cresis/collection=2009_Antarctica_TO/stac.parquet
-# provider=cresis/collection=2009_Antarctica_TO_Gambit/stac.parquet
 # provider=cresis/collection=2010_Antarctica_DC8/stac.parquet
 # provider=cresis/collection=2011_Antarctica_DC8/stac.parquet
 # provider=cresis/collection=2011_Antarctica_TO/stac.parquet
@@ -157,8 +158,7 @@ for prefix in prefixes.values():
 #
 # | BedMap3 | OPR |
 # |---------|-----|
-# | CRESIS_2009_AntarcticaTO_AIR_BM3 | 2009_Antarctica_TO_Gambit|
-# | CRESIS_2009_Thwaites_AIR_BM3     | 2009_Antarctica_TO |
+# | CRESIS_2009_AntarcticaTO_AIR_BM3 & CRESIS_2009_Thwaites_AIR_BM3 | 2009_Antarctica_TO |
 # | CRESIS_2013_Siple-Coast_AIR_BM3  | 2013_Antarctica_Basler |
 # | NASA_2013_ICEBRIDGE_AIR_BM3 | 2013_Antarctica_P3 |
 # | NASA_2014_ICEBRIDGE_AIR_BM3 | 2014_Antarctica_DC8 |
@@ -185,24 +185,22 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
                 campaign = "NASA_2013_ICEBRIDGE_AIR_BM3"
             case "2013_Antarctica_Basler":
                 campaign = "CRESIS_2013_Siple-Coast_AIR_BM3"
-            case "2009_Antarctica_TO_Gambit":
-                campaign = "CRESIS_2009_AntarcticaTO_AIR_BM3"
             case "2009_Antarctica_TO":
-                campaign = "CRESIS_2009_Thwaites_AIR_BM3"
+                campaign = "CRESIS_2009_"  # AntarcticaTO_AIR_BM3 and Thwaites_AIR_BM3
             case "2009_Antarctica_DC8":
                 campaign = "NASA_2009_ICEBRIDGE_AIR_BM2"
             case _:
                 raise ValueError(f"Update code to set maching campaign for {shortname}")
-        gdf_bedmap = gdf_bedmap.query(expr=f"name == '{campaign}'")
-    assert len(gdf_bedmap) == 1  # always 1
+        gdf_bedmap = gdf_bedmap.query(expr=f"name.str.startswith('{campaign}')")
+
 
     # BedMAP2 (dense XY points)
-    path = gdf_bedmap.asset_href.iloc[0].replace(
+    paths: pd.Series = gdf_bedmap.asset_href.str.replace(
         "s3://us-west-2.opendata.source.coop/englacial/bedmap/", "bedmap/"
     )
-    gdf_bedmap_dense = (await aio_read_parquet(store=store, path=path)).to_crs(
-        epsg=3031
-    )
+    gdf_bedmap_dense = pd.concat(
+        objs=[await aio_read_parquet(store=store, path=path) for path in paths]
+    ).to_crs(epsg=3031)
     gdf_bedmap_dense = gdf_bedmap_dense.sort_values(by="timestamp").reset_index(
         drop=True
     )
@@ -338,9 +336,7 @@ for shortname, prefix in reversed(prefixes.items()):  # reverse chronological lo
                     gdf_bedmap_dense.loc[head:tail, "opr_id"] = segment.id  # label
                     continue
 
-            #
-
-    basename = os.path.basename(path).replace(".parquet", "")
+    basename = os.path.basename(paths.iloc[0]).replace(".parquet", "")
     gdf_bedmap_dense.to_file(filename := f"data/{basename}.gpkg")
     print(f"Saved dense BedMAP points labelled with OPR ids to {filename}")
     print()
