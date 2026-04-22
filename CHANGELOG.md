@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-21
+
+- STAC catalog: parquet schema fixes, morton indexing, spatial matching, and full season YAML coverage ([#73](https://github.com/englacial/xopr/pull/73)) by @espg
+- Flight line coverage increased from: 1465716 km → 1467566 km ([#88](https://github.com/englacial/xopr/pull/88)) by @github-actions
+- Fix crossovers notebook ([#85](https://github.com/englacial/xopr/pull/85)) by @thomasteisberg
+- Fix cache and query consistency bugs in query_bedmap, do not reorder BedMap parquet files ([#82](https://github.com/englacial/xopr/pull/82)) by @thomasteisberg
+- Minor bedmap fixes: rewrite paths for non-cache pipeline and update upload script ([#83](https://github.com/englacial/xopr/pull/83)) by @thomasteisberg
+- Flight line coverage increased from: 1440766 km → 1465716 km ([#80](https://github.com/englacial/xopr/pull/80)) by @github-actions
+
+
 ## [0.4.3] - 2026-02-09
 
 - Switch catalog endpoints to source.coop ([#70](https://github.com/englacial/xopr/pull/70)) by @espg
