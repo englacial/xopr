@@ -1,52 +1,39 @@
 #!/bin/bash
 
-# Upload bedmap GeoParquet files and STAC catalog to Google Cloud Storage
+# Upload bedmap GeoParquet files and STAC catalog to Source Cooperative (S3)
+#
+# Requires AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+# and optionally AWS_SESSION_TOKEN) exported as environment variables.
 #
 # Usage:
-#   bash scripts/upload_bedmap_to_gcloud.sh [-v|--verbose] [-d|--debug] [-n|--dry-run]
+#   bash scripts/upload_bedmap_to_gcloud.sh [-n|--dry-run]
 #
 # Options:
-#   -v, --verbose   Show detailed progress
-#   -d, --debug     Show debug output (very verbose)
 #   -n, --dry-run   Show what would be uploaded without uploading
 
-VERBOSE=""
-DEBUG=""
 DRY_RUN=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -v|--verbose)
-      VERBOSE="-v"
-      shift
-      ;;
-    -d|--debug)
-      DEBUG="-D"
-      shift
-      ;;
     -n|--dry-run)
-      DRY_RUN="-n"
+      DRY_RUN="--dryrun"
       shift
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [-v|--verbose] [-d|--debug] [-n|--dry-run]"
+      echo "Usage: $0 [-n|--dry-run]"
       exit 1
       ;;
   esac
 done
 
-# Build gsutil options
-GSUTIL_OPTS="$VERBOSE $DEBUG $DRY_RUN"
-
-if [ -n "$VERBOSE" ]; then
-  echo "Verbose mode enabled"
-fi
-if [ -n "$DEBUG" ]; then
-  echo "Debug mode enabled (very verbose)"
-fi
 if [ -n "$DRY_RUN" ]; then
   echo "Dry-run mode: no files will be uploaded"
+fi
+
+if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
+  echo "Error: AWS_ACCESS_KEY_ID not set"
+  exit 1
 fi
 
 # Check the current directory is the root of the git repo
@@ -58,8 +45,8 @@ fi
 # Set variables
 PARQUET_DIR="scripts/output/bedmap"
 CATALOG_DIR="scripts/output/bedmap_catalog"
-GCS_DATA_PATH="s3://us-west-2.opendata.source.coop/englacial/bedmap/data/"
-GCS_CATALOG_ROOT="s3://us-west-2.opendata.source.coop/englacial/bedmap/"
+S3_DATA_PATH="s3://us-west-2.opendata.source.coop/englacial/bedmap/data/"
+S3_CATALOG_ROOT="s3://us-west-2.opendata.source.coop/englacial/bedmap/"
 
 # Check if parquet files exist
 if [ ! -d "$PARQUET_DIR" ]; then
@@ -82,36 +69,35 @@ echo "Found $PARQUET_COUNT parquet files to upload"
 
 # Upload parquet files
 echo ""
-echo "Uploading bedmap parquet files to Google Cloud Storage..."
-echo "  Source: $PARQUET_DIR/*.parquet"
-echo "  Destination: $GCS_DATA_PATH"
+echo "Uploading bedmap parquet files..."
+echo "  Source: $PARQUET_DIR/"
+echo "  Destination: $S3_DATA_PATH"
 
-gsutil $DEBUG -m cp $VERBOSE $DRY_RUN "$PARQUET_DIR"/*.parquet "$GCS_DATA_PATH"
+aws s3 sync "$PARQUET_DIR" "$S3_DATA_PATH" --exclude "*" --include "*.parquet" $DRY_RUN
 
 if [ $? -eq 0 ]; then
-  echo "✓ Parquet files uploaded successfully"
+  echo "Parquet files uploaded successfully"
 else
-  echo "✗ Error uploading parquet files"
+  echo "Error uploading parquet files"
   exit 1
 fi
 
 # Upload GeoParquet STAC catalogs if they exist
 if [ -d "$CATALOG_DIR" ]; then
-  # Find all bedmap*.parquet catalog files
   CATALOG_FILES=$(find "$CATALOG_DIR" -name "bedmap*.parquet" 2>/dev/null)
 
   if [ -n "$CATALOG_FILES" ]; then
     echo ""
     echo "Uploading bedmap GeoParquet STAC catalogs..."
-    echo "  Source: $CATALOG_DIR/bedmap*.parquet"
-    echo "  Destination: s3://us-west-2.opendata.source.coop/englacial/bedmap/"
 
-    gsutil $DEBUG -m cp $VERBOSE $DRY_RUN "$CATALOG_DIR"/bedmap*.parquet "s3://us-west-2.opendata.source.coop/englacial/bedmap/"
+    for f in "$CATALOG_DIR"/bedmap*.parquet; do
+      aws s3 cp "$f" "$S3_CATALOG_ROOT$(basename "$f")" $DRY_RUN
+    done
 
     if [ $? -eq 0 ]; then
-      echo "✓ GeoParquet catalogs uploaded successfully"
+      echo "GeoParquet catalogs uploaded successfully"
     else
-      echo "✗ Error uploading GeoParquet catalogs"
+      echo "Error uploading GeoParquet catalogs"
       exit 1
     fi
   else
@@ -126,22 +112,13 @@ if [ -z "$DRY_RUN" ]; then
   echo ""
   echo "Verifying upload..."
   echo "Data files:"
-  gsutil $DEBUG ls "$GCS_DATA_PATH" | head -5
-  echo "..."
+  aws s3 ls "$S3_DATA_PATH" --no-sign-request | wc -l | xargs -I{} echo "  {} files"
 
-  echo ""
   echo "Catalog files:"
-  gsutil $DEBUG ls "s3://us-west-2.opendata.source.coop/englacial/bedmap/bedmap*.parquet" 2>/dev/null || echo "  (no catalog files found)"
-else
-  echo ""
-  echo "Skipping verification in dry-run mode"
+  aws s3 ls "$S3_CATALOG_ROOT" --no-sign-request | grep 'bedmap[123]' || echo "  (no catalog files found)"
 fi
 
 echo ""
-echo "============================================================"
 echo "Upload complete!"
-echo ""
-echo "Bedmap data is now available at:"
-echo "  Data: $GCS_DATA_PATH"
-echo "  Catalogs: ${GCS_CATALOG_ROOT}bedmap*.parquet"
-echo "============================================================"
+echo "  Data: $S3_DATA_PATH"
+echo "  Catalogs: ${S3_CATALOG_ROOT}bedmap*.parquet"
