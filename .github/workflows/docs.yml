@@ -25,10 +25,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@v8
     
     - name: Set up Python
       run: uv python install 3.12
@@ -46,7 +46,7 @@ jobs:
         uv run pytest --cov=xopr --cov-report=html --cov-report=xml --cov-report=term
     
     - name: Upload coverage artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: coverage-report
         path: ./htmlcov
@@ -56,10 +56,10 @@ jobs:
     needs: test
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@v8
 
     - name: Set up Python
       run: uv python install 3.12
@@ -90,7 +90,7 @@ jobs:
         echo "API documentation generated at docs/_build/html/api/"
 
     - name: Download coverage artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: coverage-report
         path: ./coverage-temp
@@ -152,7 +152,7 @@ jobs:
     
     # Upload artifact for all builds (PR and main)
     - name: Upload docs artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: docs-html-${{ github.sha }}
         path: docs/_build/html
@@ -181,7 +181,7 @@ jobs:
       pull-requests: write
     steps:
     - name: Download docs artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: docs-html-${{ github.sha }}
         path: ./docs-html

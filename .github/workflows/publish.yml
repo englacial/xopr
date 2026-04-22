@@ -31,18 +31,18 @@ jobs:
         private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
         token: ${{ steps.app-token.outputs.token }}
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: "3.11"
         
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@v8
       with:
         enable-cache: true
         
@@ -244,12 +244,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         ref: ${{ github.ref }}
         fetch-depth: 0
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: "3.11"
     - name: Install pypa/build
@@ -257,7 +257,7 @@ jobs:
     - name: Build a binary wheel and a source tarball
       run: python3 -m build
     - name: Store the distribution packages
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: python-package-distributions
         path: dist/
@@ -277,7 +277,7 @@ jobs:
 
     steps:
     - name: Download all the dists
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: python-package-distributions
         path: dist/
@@ -302,7 +302,7 @@ jobs:
 
     steps:
     - name: Download all the dists
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: python-package-distributions
         path: dist/
@@ -320,7 +320,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         ref: main
         fetch-depth: 0
