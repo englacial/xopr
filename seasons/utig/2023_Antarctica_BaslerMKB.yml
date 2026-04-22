@@ -1,0 +1,37 @@
+version: 1.0.0
+data:
+  root: /kucresis/scratch/dataproducts/public/data/rds
+  provider: utig
+  primary_product: CSARP_standard
+  extra_products:
+  - CSARP_layer
+  - CSARP_qlook
+  campaigns:
+    include:
+    - 2023_Antarctica_BaslerMKB
+    exclude: []
+  campaign_filter: ''
+output:
+  path: ../catalog/2023_Antarctica_BaslerMKB
+  catalog_id: OPR-CReSIS
+  catalog_description: Open Polar Radar UTIG airborne data
+  license: various
+processing:
+  n_workers: 20
+  memory_limit: 8GB
+  max_items: null
+assets:
+  base_url: https://data.cresis.ku.edu/data/rds/
+logging:
+  verbose: false
+  level: INFO
+geometry:
+  simplify: true
+  tolerance: 100.0
+radar:
+  f0: 52500000
+  f1: 67500000
+  override: true
+sci:
+  citation: "This work was supported by the Center for Oldest Ice Exploration, an NSF Science and Technology Center (NSF 2019719) and the G. Unger Vetlesen Foundation."
+  override: true

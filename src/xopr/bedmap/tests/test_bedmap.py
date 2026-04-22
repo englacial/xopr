@@ -652,6 +652,12 @@ class TestCatalog:
             assert catalog_gdf['asset_href'].iloc[0] == 'gs://test/TEST_BM2.parquet'
             assert catalog_gdf['bedmap_version'].iloc[0] == 'BM2'
 
+            # No LargeUtf8 (Arrow type 20); browser arrow-js < 15 can't decode it.
+            import pyarrow as pa
+            schema = pq.read_schema(output_dir / 'bedmap2.parquet')
+            assert not any(pa.types.is_large_string(f.type) for f in schema), \
+                f"Unexpected large_string column in catalog: {schema}"
+
 
 class TestConverterAdvanced:
     """Additional converter tests for better coverage."""

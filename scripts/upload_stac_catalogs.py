@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Upload STAC parquet collection catalogs to the correct S3 locations.
+Upload STAC parquet collection catalogs to the correct S3 locations on Source.coop.
 
 This script processes a directory of STAC parquet files and uploads them to:
   s3://us-west-2.opendata.source.coop/englacial/xopr/catalog/hemisphere=<north|south>/provider=<provider>/collection=<collection>/
@@ -9,35 +9,78 @@ The hemisphere and provider are read from the opr namespace metadata in the parq
   - opr:hemisphere (north or south)
   - opr:provider (awi, cresis, dtu, utig, etc.)
 Collection is extracted from the filename or metadata.
+
+Authentication uses a Source.coop token JSON file with aws_access_key_id,
+aws_secret_access_key, aws_session_token, and region_name fields.
+Pass the path via --credentials or SOURCE_COOP_CREDENTIALS env var.
 """
 
-import os
-import sys
 import argparse
-import subprocess
 import json
-from pathlib import Path
-from typing import Dict, Optional, Tuple, List
+import os
 import re
+import sys
+from pathlib import Path
+from typing import Dict
 
 try:
-    import pyarrow.parquet as pq
     import pandas as pd
+    import pyarrow.parquet as pq
 except ImportError:
     print("Error: pyarrow and pandas are required. Install with: pip install pyarrow pandas")
     sys.exit(1)
 
+try:
+    import boto3
+    from botocore.exceptions import ClientError, NoCredentialsError
+except ImportError:
+    print("Error: boto3 is required. Install with: pip install boto3")
+    sys.exit(1)
 
-def run_command(cmd: List[str], env=None) -> Tuple[bool, str, str]:
-    """Run a command and return success status, stdout, and stderr."""
+S3_BUCKET = "us-west-2.opendata.source.coop"
+S3_PREFIX = "englacial/xopr/catalog"
+
+
+def load_credentials(cred_path: str) -> Dict:
+    """Load Source.coop S3 credentials from a JSON file."""
+    path = Path(cred_path).expanduser()
+    if not path.exists():
+        print(f"ERROR: Credentials file not found: {path}")
+        sys.exit(1)
+    with open(path) as f:
+        creds = json.load(f)
+    required = ['aws_access_key_id', 'aws_secret_access_key', 'aws_session_token']
+    missing = [k for k in required if k not in creds]
+    if missing:
+        print(f"ERROR: Credentials file missing keys: {', '.join(missing)}")
+        sys.exit(1)
+    return creds
+
+
+def create_s3_client(creds: Dict):
+    """Create a boto3 S3 client from Source.coop credentials."""
+    return boto3.client(
+        's3',
+        aws_access_key_id=creds['aws_access_key_id'],
+        aws_secret_access_key=creds['aws_secret_access_key'],
+        aws_session_token=creds['aws_session_token'],
+        region_name=creds.get('region_name', 'us-west-2'),
+    )
+
+
+def check_s3_auth(s3_client) -> bool:
+    """Check if S3 authentication is configured for Source.coop."""
     try:
-        # Use current environment if none provided
-        if env is None:
-            env = os.environ.copy()
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
-        return True, result.stdout, result.stderr
-    except subprocess.CalledProcessError as e:
-        return False, e.stdout, e.stderr
+        s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix=S3_PREFIX + "/", MaxKeys=1)
+        return True
+    except (ClientError, NoCredentialsError) as e:
+        print("ERROR: Not authenticated to Source.coop S3")
+        print(f"Error details: {e}")
+        print("\nTo fix this, provide a credentials JSON file with:")
+        print("  --credentials path/to/source_coop_token.json")
+        print("\nThe JSON file should contain:")
+        print('  {"aws_access_key_id": "...", "aws_secret_access_key": "...", "aws_session_token": "...", "region_name": "us-west-2"}')
+        return False
 
 
 def extract_metadata_from_parquet(file_path: str) -> Dict:
@@ -124,85 +167,31 @@ def extract_info_from_filename(filename: str) -> Dict:
     return info
 
 
-def check_gcs_auth() -> bool:
-    """Check if GCS authentication is configured."""
-    # Try to list the bucket
-    env = os.environ.copy()
-    cmd = ["aws", "s3", "ls", "s3://us-west-2.opendata.source.coop/englacial/xopr/"]
-    success, _, stderr = run_command(cmd, env)
-
-    if not success:
-        print("ERROR: Not authenticated to Google Cloud Storage")
-        print(f"Error details: {stderr}")
-        print("\nTo fix this, either:")
-        print('1. Set service account: export GOOGLE_APPLICATION_CREDENTIALS="$HOME/opr-stac-key.json"')
-        print("2. Or use gcloud: gcloud auth application-default login")
-
-        # Check if the environment variable is set
-        if os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'):
-            cred_path = os.environ['GOOGLE_APPLICATION_CREDENTIALS']
-            print(f"\nNote: GOOGLE_APPLICATION_CREDENTIALS is set to: {cred_path}")
-            if not os.path.exists(cred_path):
-                print(f"  ERROR: File does not exist: {cred_path}")
-            else:
-                print(f"  File exists, but authentication is still failing.")
-                print(f"  Check that the service account has storage.objectAdmin role.")
-        return False
-    return True
+def build_s3_key(hemisphere: str, provider: str, collection: str) -> str:
+    """Build the S3 object key for uploading."""
+    return f"{S3_PREFIX}/hemisphere={hemisphere}/provider={provider}/collection={collection}/stac.parquet"
 
 
-def build_gcs_path(hemisphere: str, provider: str, collection: str) -> str:
-    """Build the GCS path for uploading."""
-    return f"s3://us-west-2.opendata.source.coop/englacial/xopr/catalog/hemisphere={hemisphere}/provider={provider}/collection={collection}/stac.parquet"
-
-
-def upload_file(local_path: str, gcs_path: str, dry_run: bool = True) -> bool:
-    """Upload a file to GCS."""
+def upload_file(s3_client, local_path: str, s3_key: str, dry_run: bool = True) -> bool:
+    """Upload a file to Source.coop S3."""
+    s3_uri = f"s3://{S3_BUCKET}/{s3_key}"
     if dry_run:
-        print(f"[DRY RUN] Would upload:")
+        print("[DRY RUN] Would upload:")
         print(f"  FROM: {local_path}")
-        print(f"    TO: {gcs_path}")
+        print(f"    TO: {s3_uri}")
         return True
 
-    # Check for credentials and use them explicitly
-    env = os.environ.copy()
-    cred_path = env.get('GOOGLE_APPLICATION_CREDENTIALS')
-
-    if cred_path and os.path.exists(cred_path):
-        # Use gsutil with explicit service account key file
-        print(f"   Using credentials: {cred_path}")
-        cmd = [
-            "gsutil",
-            "-o", f"Credentials:gs_service_key_file={cred_path}",
-            "cp", local_path, gcs_path
-        ]
-    else:
-        # Fallback to default authentication
-        print("   Warning: No service account key found, using default authentication")
-        cmd = ["gsutil", "cp", local_path, gcs_path]
-
-    print(f"Uploading: {local_path} -> {gcs_path}")
-
-    success, stdout, stderr = run_command(cmd, env)
-
-    if not success:
-        print(f"Error uploading {local_path}: {stderr}")
-        # Additional debugging
-        if "Anonymous caller" in stderr:
-            print("\nDEBUG: Authentication issue detected!")
-            print(f"  GOOGLE_APPLICATION_CREDENTIALS={env.get('GOOGLE_APPLICATION_CREDENTIALS')}")
-            if cred_path:
-                print(f"  File exists at {cred_path}: {os.path.exists(cred_path)}")
-                if os.path.exists(cred_path):
-                    print(f"  File size: {os.path.getsize(cred_path)} bytes")
-                    print(f"  File readable: {os.access(cred_path, os.R_OK)}")
+    print(f"Uploading: {local_path} -> {s3_uri}")
+    try:
+        s3_client.upload_file(local_path, S3_BUCKET, s3_key)
+        return True
+    except (ClientError, NoCredentialsError) as e:
+        print(f"Error uploading {local_path}: {e}")
         return False
 
-    return True
 
-
-def process_directory(directory: str, dry_run: bool = True, verbose: bool = False):
-    """Process all parquet files in a directory and upload them to GCS."""
+def process_directory(s3_client, directory: str, dry_run: bool = True, verbose: bool = False):
+    """Process all parquet files in a directory and upload them to Source.coop."""
     directory_path = Path(directory)
 
     if not directory_path.exists():
@@ -249,8 +238,8 @@ def process_directory(directory: str, dry_run: bool = True, verbose: bool = Fals
 
         if missing_fields:
             print(f"  ERROR: Missing required metadata fields: {', '.join(missing_fields)}")
-            print(f"  Please ensure the parquet file contains opr:hemisphere and opr:provider metadata")
-            print(f"  Skipping...")
+            print("  Please ensure the parquet file contains opr:hemisphere and opr:provider metadata")
+            print("  Skipping...")
             skipped += 1
             continue
 
@@ -262,15 +251,14 @@ def process_directory(directory: str, dry_run: bool = True, verbose: bool = Fals
         # Validate hemisphere value
         if hemisphere not in ['north', 'south']:
             print(f"  ERROR: Invalid hemisphere value '{hemisphere}'. Must be 'north' or 'south'")
-            print(f"  Skipping...")
+            print("  Skipping...")
             skipped += 1
             continue
 
-        # Build GCS path
-        gcs_path = build_gcs_path(hemisphere, provider, collection)
+        # Build S3 key and upload
+        s3_key = build_s3_key(hemisphere, provider, collection)
 
-        # Upload file
-        if upload_file(str(parquet_file), gcs_path, dry_run):
+        if upload_file(s3_client, str(parquet_file), s3_key, dry_run):
             successful += 1
         else:
             failed += 1
@@ -290,9 +278,12 @@ def process_directory(directory: str, dry_run: bool = True, verbose: bool = Fals
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Upload STAC parquet catalogs to GCS with correct hive structure"
+        description="Upload STAC parquet catalogs to Source.coop S3 with correct hive structure"
     )
     parser.add_argument("directory", help="Directory containing parquet files to upload")
+    parser.add_argument("--credentials", default=None,
+                        help="Path to Source.coop credentials JSON file "
+                             "(or set SOURCE_COOP_CREDENTIALS env var)")
     parser.add_argument("--dry-run", action="store_true", default=True,
                         help="Perform a dry run without uploading (default: True)")
     parser.add_argument("--execute", action="store_true",
@@ -302,17 +293,28 @@ def main():
 
     args = parser.parse_args()
 
+    # Resolve credentials path
+    cred_path = args.credentials or os.environ.get('SOURCE_COOP_CREDENTIALS')
+    if not cred_path:
+        print("ERROR: No credentials provided.")
+        print("  Use --credentials path/to/token.json")
+        print("  Or set SOURCE_COOP_CREDENTIALS env var")
+        sys.exit(1)
+
+    creds = load_credentials(cred_path)
+    s3_client = create_s3_client(creds)
+
     # If --execute is specified, override dry_run
     dry_run = not args.execute
 
     # Check authentication before processing (only for actual uploads)
     if not dry_run:
-        print("Checking GCS authentication...")
-        if not check_gcs_auth():
+        print("Checking Source.coop S3 authentication...")
+        if not check_s3_auth(s3_client):
             sys.exit(1)
-        print("✅ Authentication successful\n")
+        print("Authentication successful\n")
 
-        response = input("WARNING: This will upload files to GCS. Are you sure? (yes/no): ")
+        response = input("WARNING: This will upload files to Source.coop. Are you sure? (yes/no): ")
         if response.lower() != 'yes':
             print("Aborted.")
             return
@@ -322,7 +324,7 @@ def main():
         print("DRY RUN MODE - No files will be uploaded")
         print("="*60 + "\n")
 
-    process_directory(args.directory, dry_run, args.verbose)
+    process_directory(s3_client, args.directory, dry_run, args.verbose)
 
     if dry_run:
         print("\nTo execute the actual uploads, run with --execute flag")

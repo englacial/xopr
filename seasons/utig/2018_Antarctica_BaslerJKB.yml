@@ -1,0 +1,38 @@
+version: 1.0.0
+data:
+  root: /kucresis/scratch/dataproducts/public/data/rds
+  provider: utig
+  primary_product: CSARP_standard
+  extra_products:
+  - CSARP_layer
+  - CSARP_qlook
+  campaigns:
+    include:
+    - 2018_Antarctica_BaslerJKB
+    exclude: []
+  campaign_filter: ''
+output:
+  path: ../catalog/2018_Antarctica_BaslerJKB
+  catalog_id: OPR-CReSIS
+  catalog_description: Open Polar Radar UTIG airborne data
+  license: various
+processing:
+  n_workers: 20
+  memory_limit: 8GB
+  max_items: null
+assets:
+  base_url: https://data.cresis.ku.edu/data/rds/
+logging:
+  verbose: false
+  level: INFO
+geometry:
+  simplify: true
+  tolerance: 100.0
+radar:
+  f0: 52500000
+  f1: 67500000
+  override: true
+sci:
+  citation: "Roberts, J.L., Blankenship, D.D., Greenbaum, J.S., Beem, L.H., Kempf, S.D., Young, D.A., Richter, T.G., Van Ommen, T. and Le Meur, E. (2025) EAGLE/ICECAP II - geophysical observations (surface and bed elevation, ice thickness, gravity disturbance and magnetic anomalies) - 2015-2018, Ver. 3, Australian Antarctic Data Centre - doi:10.26179/11md-a816"
+  doi: "10.26179/11md-a816"
+  override: true

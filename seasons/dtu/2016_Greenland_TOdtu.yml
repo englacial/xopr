@@ -1,0 +1,31 @@
+version: 1.0.0
+data:
+  root: /kucresis/scratch/dataproducts/public/data/rds
+  provider: dtu
+  primary_product: CSARP_standard
+  extra_products:
+  - CSARP_qlook
+  campaigns:
+    include:
+    - 2016_Greenland_TOdtu
+    exclude: []
+  campaign_filter: ''
+output:
+  path: ../catalog/2016_Greenland_TOdtu
+  catalog_id: OPR-CReSIS
+  catalog_description: Open Polar Radar DTU airborne data
+  license: various
+processing:
+  n_workers: 20
+  memory_limit: 8GB
+  max_items: null
+assets:
+  base_url: https://data.cresis.ku.edu/data/rds/
+logging:
+  verbose: false
+  level: INFO
+geometry:
+  simplify: true
+  tolerance: 100.0
+radar:
+  override: false

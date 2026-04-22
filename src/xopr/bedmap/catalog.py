@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Union
 
 import geopandas as gpd
+import pyarrow as pa
 import pyarrow.parquet as pq
 from shapely import wkb, wkt
 
@@ -193,11 +194,31 @@ def build_bedmap_geoparquet_catalog(
         version_num = version[-1]  # Extract '1', '2', or '3' from 'BM1', 'BM2', 'BM3'
         output_path = output_dir / f'bedmap{version_num}.parquet'
 
-        # Write to GeoParquet
+        # Write to GeoParquet. Cast any LargeUtf8 columns back to Utf8:
+        # the browser map viewer (polar.html) uses parquet-wasm + arrow-js,
+        # and arrow-js < 15 cannot decode Arrow type 20 (LargeUtf8).
         gdf.to_parquet(output_path)
+        _rewrite_large_string_as_string(output_path)
 
         print(f"  Created {output_path.name}: {len(gdf)} items")
         catalogs[version] = gdf
 
     print(f"\nGeoParquet catalogs written to {output_dir}")
     return catalogs
+
+
+def _rewrite_large_string_as_string(path: Union[str, Path]) -> None:
+    """Cast any LargeUtf8 columns in a parquet file to Utf8 in place."""
+    table = pq.read_table(path)
+    if not any(pa.types.is_large_string(f.type) for f in table.schema):
+        return
+    new_schema = pa.schema(
+        [
+            pa.field(f.name, pa.string(), f.nullable, f.metadata)
+            if pa.types.is_large_string(f.type)
+            else f
+            for f in table.schema
+        ],
+        metadata=table.schema.metadata,
+    )
+    pq.write_table(table.cast(new_schema), path)

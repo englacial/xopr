@@ -1,0 +1,38 @@
+version: 1.0.0
+data:
+  root: /kucresis/scratch/dataproducts/public/data/rds
+  provider: utig
+  primary_product: CSARP_standard
+  extra_products:
+  - CSARP_layer
+  - CSARP_qlook
+  campaigns:
+    include:
+    - 2016_Antarctica_BaslerJKB
+    exclude: []
+  campaign_filter: ''
+output:
+  path: ../catalog/2016_Antarctica_BaslerJKB
+  catalog_id: OPR-CReSIS
+  catalog_description: Open Polar Radar UTIG airborne data
+  license: various
+processing:
+  n_workers: 20
+  memory_limit: 8GB
+  max_items: null
+assets:
+  base_url: https://data.cresis.ku.edu/data/rds/
+logging:
+  verbose: false
+  level: INFO
+geometry:
+  simplify: true
+  tolerance: 100.0
+radar:
+  f0: 52500000
+  f1: 67500000
+  override: true
+sci:
+  citation: "Blankenship, D.D., Roberts, J.L., Young, D. and Van Ommen, T. (2018) EAGLE/ICECAP II Raw data (gps, raw serial packet data, raw radar records, gravimeter data and camera images), Ver. 1, Australian Antarctic Data Centre - doi:10.26179/5bbedd001756b"
+  doi: "10.26179/5bbedd001756b"
+  override: true

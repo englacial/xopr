@@ -53,7 +53,8 @@
         // Local files are at: src/xopr/map/parquet_wasm.js and src/xopr/map/parquet_wasm_bg.wasm
         console.log('Loading WASM module from GCS');
         const { default: init, readParquet } = await import('https://storage.googleapis.com/opr_test_dataset_1/parquet_wasm.js');
-        import * as arrow from 'https://cdn.jsdelivr.net/npm/apache-arrow@14.0.2/+esm';
+        // apache-arrow@15+ needed to decode LargeUtf8 (Arrow type 20).
+        import * as arrow from 'https://cdn.jsdelivr.net/npm/apache-arrow@18.1.0/+esm';
         
         // Parse S3 URLs and convert to HTTP URLs (define this before parseConfigFromURL)
         function parseS3Url(url) {

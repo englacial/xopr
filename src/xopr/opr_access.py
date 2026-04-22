@@ -130,7 +130,13 @@ class OPRConnection:
         return state
 
     def _open_file(self, url):
-        """Helper method to open files with appropriate caching."""
+        """Helper method to open files with appropriate caching.
+
+        Local filesystem paths are returned as-is (no fsspec wrapping).
+        Remote URLs (http, https, s3, gs) use filecache or simplecache.
+        """
+        if not url.startswith(('http://', 'https://', 's3://', 'gs://')):
+            return url
         if self.fsspec_url_prefix:
             return fsspec.open_local(f"{self.fsspec_url_prefix}{url}", filecache=self.fsspec_cache_kwargs)
         else:
