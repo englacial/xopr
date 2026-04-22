@@ -128,7 +128,7 @@ def extract_item_metadata(
             if not file_path.exists():
                 raise FileNotFoundError(f"MAT file not found: {file_path}")
 
-        opr = OPRConnection(cache_dir="radar_cache")
+        opr = OPRConnection(cache_dir=None)
         ds = opr.load_frame_url(str(mat_file_path))
         should_close_dataset = True
     else:
