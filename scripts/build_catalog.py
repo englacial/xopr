@@ -60,13 +60,15 @@ def build_collection_parallel(campaign_path: Path, conf: DictConfig, client: Cli
     print(f"📡 Processing {len(flight_lines)} flights in parallel...")
     futures = []
     for flight_data in flight_lines:
-        future = client.submit(create_items_from_flight_data,
+        future = client.submit(
+            create_items_from_flight_data,
             flight_data,
-            conf,  # Pass config object
-            conf.assets.base_url,
-            campaign_name,
-            conf.data.primary_product,
-            False  # verbose=False for parallel
+            conf,
+            base_url=conf.assets.base_url,
+            campaign_name=campaign_name,
+            primary_data_product=conf.data.primary_product,
+            provider=conf.data.get("provider", "cresis"),
+            verbose=False,
         )
         futures.append(future)
     
