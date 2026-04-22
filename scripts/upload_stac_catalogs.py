@@ -199,7 +199,7 @@ def process_directory(s3_client, directory: str, dry_run: bool = True, verbose: 
         return
 
     # Find all parquet files
-    parquet_files = list(directory_path.glob("*.parquet"))
+    parquet_files = list(directory_path.glob("**/*.parquet"))
 
     if not parquet_files:
         print(f"No parquet files found in {directory}")
