@@ -71,7 +71,7 @@ def build_collection_parallel(campaign_path: Path, conf: DictConfig, client: Cli
             verbose=False,
         )
         futures.append(future)
-    
+
     # Collect results
     all_items = []
     completed_count = 0
@@ -125,7 +125,7 @@ def build_collection_parallel(campaign_path: Path, conf: DictConfig, client: Cli
     # Export to parquet
     output_dir = Path(conf.output.path)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     print("💾 Writing parquet file...")
     parquet_path = export_collection_to_parquet(
         collection, conf
