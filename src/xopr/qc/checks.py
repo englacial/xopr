@@ -211,13 +211,8 @@ def snr_bed_pick(ds, min_snr_db=5.0, noise_region_samples=50):
     bottom_twtt = ds["standard:bottom"].values
 
     n_traces = data.shape[0]
-    bed_power = np.full(n_traces, np.nan)
-    for i in range(n_traces):
-        if np.isnan(bottom_twtt[i]):
-            continue
-        idx = np.searchsorted(twtt, bottom_twtt[i])
-        idx = min(idx, data.shape[1] - 1)
-        bed_power[i] = data[i, idx]
+    idx = np.clip(np.searchsorted(twtt, bottom_twtt), 0, data.shape[1] - 1)
+    bed_power = np.where(np.isnan(bottom_twtt), np.nan, data[np.arange(n_traces), idx])
 
     noise_floor = np.nanmean(data[:, -noise_region_samples:], axis=1)
 
