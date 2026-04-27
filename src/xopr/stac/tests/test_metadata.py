@@ -173,7 +173,7 @@ class TestExtractItemMetadataWithRealData:
         result = extract_item_metadata(mat_file_path=data_url)
 
         # Basic sanity checks - all keys should be present
-        expected_keys = {'geom', 'bbox', 'date', 'frequency', 'bandwidth', 'doi', 'citation', 'mimetype'}
+        expected_keys = {'geom', 'raw_geom', 'bbox', 'date', 'frequency', 'bandwidth', 'doi', 'citation', 'mimetype'}
         assert set(result.keys()) == expected_keys
 
         # Check data types for always-present values
@@ -233,7 +233,7 @@ class TestExtractItemMetadataWithRealData:
             results.append(result)
 
         # All should have the same structure
-        expected_keys = {'geom', 'bbox', 'date', 'frequency', 'bandwidth', 'doi', 'citation', 'mimetype'}
+        expected_keys = {'geom', 'raw_geom', 'bbox', 'date', 'frequency', 'bandwidth', 'doi', 'citation', 'mimetype'}
         for result in results:
             assert set(result.keys()) == expected_keys
 

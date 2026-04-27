@@ -130,7 +130,13 @@ class OPRConnection:
         return state
 
     def _open_file(self, url):
-        """Helper method to open files with appropriate caching."""
+        """Helper method to open files with appropriate caching.
+
+        Local filesystem paths are returned as-is (no fsspec wrapping).
+        Remote URLs (http, https, s3, gs) use filecache or simplecache.
+        """
+        if not url.startswith(('http://', 'https://', 's3://', 'gs://')):
+            return url
         if self.fsspec_url_prefix:
             return fsspec.open_local(f"{self.fsspec_url_prefix}{url}", filecache=self.fsspec_cache_kwargs)
         else:
@@ -305,8 +311,10 @@ class OPRConnection:
 
     def load_frames(self, stac_items: gpd.GeoDataFrame,
                     data_product: str = "CSARP_standard",
+                    image: Union[int, None] = None,
                     merge_flights: bool = False,
                     skip_errors: bool = False,
+                    allow_unlisted_products: bool = False
                     ) -> Union[list[xr.Dataset], xr.Dataset]:
         """
         Load multiple radar frames from STAC items.
@@ -317,10 +325,16 @@ class OPRConnection:
             STAC items returned from query_frames.
         data_product : str, optional
             Data product to load (e.g., "CSARP_standard", "CSARP_qlook").
+        image : int or None, optional
+            The image number to load for each frame. If None (default), loads the
+            combined image. If specified, `allow_unlisted_products` must be True.
         merge_flights : bool, optional
             If True, merge frames from the same segment into single Datasets.
         skip_errors : bool, optional
             If True, skip failed frames and continue loading others.
+        allow_unlisted_products : bool, optional
+            If True, attempt to load the specified data product even if it's not
+            listed in the item's assets. See `load_frame` for details.
 
         Returns
         -------
@@ -332,7 +346,7 @@ class OPRConnection:
 
         for idx, item in stac_items.iterrows():
             try:
-                frame = self.load_frame(item, data_product)
+                frame = self.load_frame(item, data_product, image=image, allow_unlisted_products=allow_unlisted_products)
                 frames.append(frame)
             except Exception as e:
                 print(f"Error loading frame for item {item.get('id', 'unknown')}: {e}")
@@ -346,7 +360,9 @@ class OPRConnection:
         else:
             return frames
 
-    def load_frame(self, stac_item, data_product: str = "CSARP_standard") -> xr.Dataset:
+    def load_frame(self, stac_item, data_product: str = "CSARP_standard",
+                   image: Union[int, None] = None,
+                   allow_unlisted_products: bool = False) -> xr.Dataset:
         """
         Load a single radar frame from a STAC item.
 
@@ -356,7 +372,16 @@ class OPRConnection:
             STAC item containing asset URLs.
         data_product : str, optional
             Data product to load (e.g., "CSARP_standard", "CSARP_qlook").
-
+        image : int or None, optional
+            The image number to load for this frame. If None (default), loads the
+            combined image. If specified, `allow_unlisted_products` must be True.
+        allow_unlisted_products : bool, optional
+            If True, attempt to load the specified data product even if it's not
+            listed in the item's assets.  This can be useful for loading non-standard
+            products. If set to True and the data product is not found in the STAC
+            item assets, the method will attempt to construct the URL based on any
+            available CSARP_* asset. (If the frame is entirely unlisted, you can use
+            `load_frame_url` instead.)
         Returns
         -------
         xr.Dataset
@@ -369,13 +394,36 @@ class OPRConnection:
         # Get the data asset
         data_asset = assets.get(data_product)
         if not data_asset:
-            available_assets = list(assets.keys())
-            raise ValueError(f"No {data_product} asset found. Available assets: {available_assets}")
+            if not allow_unlisted_products:
+                available_assets = list(assets.keys())
+                raise ValueError(f"{data_product} asset not found in STAC item. Available assets: {available_assets}")
+            else:
+                # Find any available CSARP_* asset to use as a template for constructing the URL
+                template_asset_name = None
+                template_asset_url = None
+                for asset_name, asset_info in assets.items():
+                    if asset_name.startswith('CSARP_'):
+                        template_asset_name = asset_name
+                        template_asset_url = asset_info.get('href')
+                        break
 
-        # Get the URL from the asset
-        url = data_asset.get('href')
-        if not url:
-            raise ValueError(f"No href found in {data_product} asset")
+                if not template_asset_url:
+                    available_assets = list(assets.keys())
+                    raise ValueError(f"No CSARP_* asset found in STAC item to use as a template for constructing URL for {data_product}. Available assets: {available_assets}")
+
+                url = template_asset_url.replace(template_asset_name, data_product)
+        else:
+            # The asset does exist in the STAC item, so just get the URL from the asset
+            url = data_asset.get('href')
+
+            if not url:
+                raise ValueError(f"No href found in {data_product} asset")
+
+        # If a specific image is requested, modify the URL to point to that image
+        if image is not None:
+            if not allow_unlisted_products:
+                raise ValueError("Specifying an image number requires allow_unlisted_products=True to construct the URL")
+            url = url.replace("Data_", f"Data_img_{image:02d}_")
 
         # Load the frame using the existing method
         return self.load_frame_url(url)

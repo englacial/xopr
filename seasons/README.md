@@ -1,0 +1,222 @@
+# seasons/
+
+YAML templates that define how to build STAC catalogs for each campaign season.
+Each template captures the full provenance needed to reproducibly build and
+upload the hive-partitioned parquet catalogs hosted on
+[source.coop/englacial/xopr](https://source.coop/englacial/xopr).
+
+## Layout
+
+Top-level subdirectories group templates by data provider (matches the
+`provider=` hive partition on source.coop):
+
+```
+seasons/
+  cresis/        # CReSIS (University of Kansas) — Greenland + Antarctica
+  utig/          # University of Texas Institute for Geophysics (BaslerJKB, BaslerMKB)
+    pending/     # Known seasons without a STAC catalog yet (draft yml, not yet processed)
+  awi/           # Alfred Wegener Institute (Polar6)
+  dtu/           # Technical University of Denmark
+```
+
+## Naming convention
+
+```
+{year}_{region}_{platform}.yml
+```
+
+Examples: `cresis/2008_Antarctica_BaslerJKB.yml`, `cresis/2016_Antarctica_DC8.yml`
+
+The name matches the CReSIS campaign directory name and becomes the STAC
+collection ID.
+
+## Template schema
+
+| Field | Type | Required | CLI-overridable | Description |
+|-------|------|----------|-----------------|-------------|
+| `version` | string | yes | no | Schema version (semver, e.g. `1.0.0`) |
+| `data.root` | string | yes | yes | Root directory containing OPR data |
+| `data.provider` | string | no | yes | Data provider identifier (`awi`, `cresis`, `dtu`, `utig`) |
+| `data.primary_product` | string | yes | yes | Primary CSARP product to process |
+| `data.extra_products` | list[string] | no | yes | Additional CSARP products to include |
+| `data.campaigns.include` | list[string] | no | yes | Campaign names to include |
+| `data.campaigns.exclude` | list[string] | no | yes | Campaign names to exclude |
+| `data.campaign_filter` | string | no | yes | Regex filter on campaign names |
+| `output.path` | string | yes | yes | Output directory for parquet files |
+| `output.catalog_id` | string | yes | yes | STAC catalog identifier |
+| `output.catalog_description` | string | no | yes | Human-readable catalog description |
+| `output.license` | string | no | yes | Data license (e.g. `various`, `CC-BY-4.0`) |
+| `processing.n_workers` | int | no | yes | Dask parallel workers per campaign |
+| `processing.memory_limit` | string | no | yes | Per-worker memory limit (e.g. `8GB`) |
+| `processing.max_items` | int/null | no | yes | Cap on items to process (`null` = all) |
+| `assets.base_url` | string | yes | yes | Base URL for asset hrefs |
+| `logging.verbose` | bool | no | yes | Enable verbose output |
+| `logging.level` | string | no | yes | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `geometry.simplify` | bool | no | yes | Simplify flight geometries |
+| `geometry.tolerance` | float | no | yes | Simplification tolerance in metres |
+| `sci.citation` | string | no | no | Scientific citation text |
+| `sci.doi` | string | no | no | DOI for the dataset |
+| `sci.override` | bool | no | no | Override per-item citations with this one |
+
+See `config/catalog_config_schema.py` for the full Cerberus validation schema.
+
+## Example template
+
+```yaml
+# --- Schema version (required) ---
+version: 1.0.0
+
+data:
+  # Filesystem path to the CReSIS data tree
+  root: /kucresis/scratch/dataproducts/public/data/rds
+  # Data provider identifier (awi, cresis, dtu, utig)
+  provider: cresis
+  # Primary radar product used to build STAC items
+  primary_product: CSARP_standard
+  # Additional products attached as extra assets on each item
+  extra_products:
+  - CSARP_qlook
+  - CSARP_layer
+  campaigns:
+    # Exactly which campaign directories to process
+    include:
+    - 2002_Greenland_P3
+    # Campaigns to skip (empty = skip none)
+    exclude: []
+  # Regex filter applied after include/exclude (empty = no filter)
+  campaign_filter: ''
+
+output:
+  # Where the parquet file lands locally before upload
+  path: ./catalog_v3/ICORDS2
+  # STAC catalog ID shared across all seasons in this project
+  catalog_id: OPR-CReSIS
+  catalog_description: Open Polar Radar CRESIS airborne data
+  # SPDX license identifier
+  license: CC0-1.0
+
+processing:
+  # Dask workers spawned per campaign (one fresh cluster each)
+  n_workers: 20
+  # Per-worker memory cap
+  memory_limit: 8GB
+  # Set to an integer to cap the number of items processed (null = all)
+  max_items: null
+
+assets:
+  # Public URL prefix prepended to each asset href
+  base_url: https://data.cresis.ku.edu/data/rds/
+
+logging:
+  verbose: false
+  level: INFO
+
+geometry:
+  # Simplify flight-line geometries to reduce parquet size
+  simplify: true
+  # Simplification tolerance in metres (higher = smaller files)
+  tolerance: 100.0
+
+radar:
+  # Chirp start and stop frequencies in Hz (used for opr:bandwidth)
+  f0: 141500000
+  f1: 158500000
+  # true = apply these values to every item, ignoring per-file headers
+  override: true
+
+sci:
+  # Citation text attached to every item via the scientific STAC extension
+  citation: >-
+    CReSIS. 2026. ICORDS2 Data, Lawrence, Kansas, USA. Digital Media.
+    http://data.cresis.ku.edu/ . We acknowledge the use of data and/or data
+    products from CReSIS generated with support from the University of Kansas,
+    NASA Operation IceBridge grant NNX16AH54G, NSF grants ACI-1443054,
+    OPP-1739003, and IIS-1838230, Lilly Endowment Incorporated, and Indiana
+    METACyt Initiative.
+  # true = override any per-item citation with the one above
+  override: true
+```
+
+## Building a catalog
+
+```bash
+python scripts/build_catalog.py --config seasons/utig/2008_Antarctica_BaslerJKB.yml
+```
+
+Override any field from the command line:
+
+```bash
+python scripts/build_catalog.py --config seasons/utig/2008_Antarctica_BaslerJKB.yml \
+  processing.n_workers=8 \
+  processing.max_items=10
+```
+
+Output lands in the directory set by `output.path` (default: `../catalog/<campaign>/`).
+
+## Uploading to source.coop
+
+### Credential setup
+
+1. Log into [source.coop](https://source.coop) and navigate to the repository dashboard.
+2. Generate an S3 token — this downloads a JSON file containing
+   `aws_access_key_id`, `aws_secret_access_key`, `aws_session_token`, and
+   `region_name`.
+3. Save the file somewhere safe (e.g. `~/.source_coop_token.json`).
+
+### Upload
+
+Dry run (default — prints what would be uploaded):
+
+```bash
+python scripts/upload_stac_catalogs.py catalog/2008_Antarctica_BaslerJKB/ \
+  --credentials ~/.source_coop_token.json
+```
+
+Execute the upload:
+
+```bash
+python scripts/upload_stac_catalogs.py catalog/2008_Antarctica_BaslerJKB/ \
+  --credentials ~/.source_coop_token.json --execute
+```
+
+The uploader reads `data.provider` from the yml and places the parquet into
+the matching `provider=<provider>` hive partition.
+
+Files are placed into the hive-partitioned layout on S3:
+
+```
+s3://us-west-2.opendata.source.coop/englacial/xopr/catalog/
+  hemisphere=south/
+    provider=utig/
+      collection=2008_Antarctica_BaslerJKB/
+        stac.parquet
+```
+
+You can also set `SOURCE_COOP_CREDENTIALS` instead of passing `--credentials`
+each time.
+
+## Adding a new season
+
+1. Copy an existing template from the matching provider subfolder:
+   ```bash
+   cp seasons/cresis/2016_Antarctica_DC8.yml seasons/cresis/2024_Antarctica_NewPlatform.yml
+   ```
+2. Edit the new file — update `data.root`, `data.campaigns.include`,
+   `output.path`, `assets.base_url`, `sci.*`, etc.
+3. Build and verify:
+   ```bash
+   python scripts/build_catalog.py --config seasons/cresis/2024_Antarctica_NewPlatform.yml
+   ```
+4. Commit the template:
+   ```bash
+   git add seasons/cresis/2024_Antarctica_NewPlatform.yml
+   ```
+
+## Pending seasons
+
+`utig/pending/` holds draft yml for known UTIG seasons that do **not** yet
+have a STAC catalog on source.coop. The drafts use `radar.override: false`
+(letting the build discover bandwidth from per-file `.mat` headers) because
+we have not yet extracted those values from the source data. When a pending
+season is processed into a real catalog, move the yml out of `pending/` and
+fill in explicit `radar.f0` / `radar.f1` values from the generated parquet.

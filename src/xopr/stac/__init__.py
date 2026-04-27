@@ -7,7 +7,6 @@ across radar campaigns and data products.
 """
 
 from .catalog import (
-    build_catalog_from_parquet_metadata,
     create_collection,
     create_item,
     create_items_from_flight_data,
@@ -24,6 +23,7 @@ from .metadata import (
     discover_flight_lines,
     extract_item_metadata,
 )
+from .morton import compute_mbox, compute_mpolygon_from_items
 
 __all__ = [
     # Configuration
@@ -35,7 +35,6 @@ __all__ = [
     "create_item",
     "create_items_from_flight_data",
     "export_collection_to_parquet",
-    "build_catalog_from_parquet_metadata",
     # Metadata functions
     "extract_item_metadata",
     "discover_campaigns",
@@ -43,5 +42,8 @@ __all__ = [
     "collect_uniform_metadata",
     # Geometry functions
     "build_collection_extent_and_geometry",
-    "simplify_geometry_polar_projection"
+    "simplify_geometry_polar_projection",
+    # Morton index functions
+    "compute_mbox",
+    "compute_mpolygon_from_items",
 ]

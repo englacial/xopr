@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Build STAC collections from OPR data using YAML configuration.
-Primary workflow: Build parquet collections in parallel, then aggregate with aggregate_parquet_catalog.py
+Produces hive-partitioned parquet files ready for upload to source.coop.
 """
 
 import argparse
@@ -10,11 +10,10 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
-from omegaconf import DictConfig, OmegaConf
-import pystac
 from dask.distributed import Client, LocalCluster, as_completed
+from omegaconf import DictConfig, OmegaConf
 
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 from xopr.stac.config import load_config, save_config, validate_config
@@ -61,16 +60,18 @@ def build_collection_parallel(campaign_path: Path, conf: DictConfig, client: Cli
     print(f"📡 Processing {len(flight_lines)} flights in parallel...")
     futures = []
     for flight_data in flight_lines:
-        future = client.submit(create_items_from_flight_data,
+        future = client.submit(
+            create_items_from_flight_data,
             flight_data,
-            conf,  # Pass config object
-            conf.assets.base_url,
-            campaign_name,
-            conf.data.primary_product,
-            False  # verbose=False for parallel
+            conf,
+            base_url=conf.assets.base_url,
+            campaign_name=campaign_name,
+            primary_data_product=conf.data.primary_product,
+            provider=conf.data.get("provider", "cresis"),
+            verbose=False,
         )
         futures.append(future)
-    
+
     # Collect results
     all_items = []
     completed_count = 0
@@ -124,8 +125,8 @@ def build_collection_parallel(campaign_path: Path, conf: DictConfig, client: Cli
     # Export to parquet
     output_dir = Path(conf.output.path)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    print(f"💾 Writing parquet file...")
+
+    print("💾 Writing parquet file...")
     parquet_path = export_collection_to_parquet(
         collection, conf
     )
@@ -243,7 +244,7 @@ def process_catalog(conf: DictConfig):
     # Summary
     print(f"\n🎉 Successfully created {len(results)} out of {len(campaigns)} parquet files")
     if results:
-        print("📋 Next step: Run aggregate_parquet_catalog.py to create catalog.json")
+        print("📋 Next step: Upload to source.coop with upload_stac_catalogs.py")
 
 
 def main():

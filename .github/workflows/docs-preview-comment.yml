@@ -69,12 +69,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout PR
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         ref: ${{ needs.check-comment.outputs.pr_sha }}
-    
+
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@v7
     
     - name: Set up Python
       run: uv python install
@@ -102,7 +102,19 @@ jobs:
         # Create deployment structure with /xopr/ subdirectory
         mkdir -p surge-deploy/xopr
         cp -r docs/_build/html/* surge-deploy/xopr/
-        
+
+        # Remove JSON files that conflict with directory routes
+        # MyST generates both file.json and file/index.html, causing routing issues
+        for json in surge-deploy/xopr/*.json; do
+          if [ -f "$json" ]; then
+            base=$(basename "$json" .json)
+            if [ -d "surge-deploy/xopr/$base" ]; then
+              echo "Removing conflicting JSON file: $json"
+              rm "$json"
+            fi
+          fi
+        done
+
         # Create redirect index at root
         cat > surge-deploy/index.html << 'EOF'
         <!DOCTYPE html>

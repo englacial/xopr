@@ -138,6 +138,25 @@ def test_load_season(collection, segment_path):
 
     assert db_layers_loaded or file_layers_loaded, "No layers loaded from either database or file"
 
+def test_open_file_local_path_bypasses_cache(tmp_path):
+    """Local filesystem paths should be returned as-is, no fsspec caching."""
+    opr = xopr.OPRConnection(cache_dir=str(tmp_path))
+    local_path = "/data/campaigns/2016_Antarctica_DC8/Data_001.mat"
+    result = opr._open_file(local_path)
+    assert result == local_path
+    # Cache directory should remain empty — no files copied
+    assert len(list(tmp_path.iterdir())) == 0
+
+
+def test_open_file_remote_url_uses_cache():
+    """Remote URLs should still go through fsspec caching."""
+    opr = xopr.OPRConnection(cache_dir="/tmp/test_cache_unused")
+    # Verify remote URLs get the filecache prefix (don't actually fetch)
+    assert opr.fsspec_url_prefix == 'filecache::'
+    # Local path should NOT get the prefix
+    assert opr._open_file("/local/path.mat") == "/local/path.mat"
+
+
 def test_cache_data(tmp_path):
     """
     Test that data is locally cached after loading.

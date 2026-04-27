@@ -2,25 +2,26 @@
 
 ## Overview
 
-The STAC catalog generation now uses a simplified YAML-based configuration workflow:
+The STAC catalog generation uses a two-step YAML-based workflow:
 
-1. **Configure**: Create/edit a YAML configuration file
-2. **Build**: Generate parquet collections (parallel processing per campaign)  
-3. **Aggregate**: Create catalog.json from parquet files
+1. **Build**: Generate parquet collections (parallel processing per campaign)
+2. **Upload**: Push parquet files to source.coop with hive partitioning
 
 ## Quick Start
 
 ```bash
 # 1. Generate parquet collections
-python scripts/build_catalog.py --config config/catalog.yaml
+python scripts/build_catalog.py --config seasons/2008_Antarctica_BaslerJKB.yml
 
-# 2. Create catalog.json
-python scripts/aggregate_parquet_catalog.py --config config/catalog.yaml
+# 2. Upload to source.coop
+python scripts/upload_stac_catalogs.py catalog/2008_Antarctica_BaslerJKB/ \
+  --credentials ~/.source_coop_token.json --execute
 ```
 
 ## Configuration
 
-All settings are managed through YAML configuration files. See `config/catalog.yaml` for the main template.
+All settings are managed through YAML templates in `seasons/`. See
+`seasons/README.md` for the full template schema and examples.
 
 ### Key Configuration Options
 
@@ -50,7 +51,7 @@ Three ways to filter campaigns:
 
 1. **Regex Pattern**:
    ```bash
-   python scripts/build_catalog.py --config config/catalog.yaml \
+   python scripts/build_catalog.py --config seasons/2008_Antarctica_BaslerJKB.yml \
      data.campaign_filter="2016_Antarctica_.*"
    ```
 
@@ -74,10 +75,10 @@ Use different settings for test/production:
 
 ```bash
 # Test environment (limited data)
-python scripts/build_catalog.py --config config/catalog.yaml --env test
+python scripts/build_catalog.py --config seasons/2008_Antarctica_BaslerJKB.yml --env test
 
 # Production environment (full processing)
-python scripts/build_catalog.py --config config/catalog.yaml --env production
+python scripts/build_catalog.py --config seasons/2008_Antarctica_BaslerJKB.yml --env production
 ```
 
 ## Command Line Overrides
@@ -85,7 +86,7 @@ python scripts/build_catalog.py --config config/catalog.yaml --env production
 Override any configuration option from command line:
 
 ```bash
-python scripts/build_catalog.py --config config/catalog.yaml \
+python scripts/build_catalog.py --config seasons/2008_Antarctica_BaslerJKB.yml \
   processing.n_workers=16 \
   processing.max_items=10 \
   output.path=./my_output
@@ -96,52 +97,52 @@ python scripts/build_catalog.py --config config/catalog.yaml \
 ### Process Single Campaign
 
 ```bash
-# Configure for single campaign
-python scripts/build_catalog.py --config config/catalog.yaml \
+python scripts/build_catalog.py --config seasons/2008_Antarctica_BaslerJKB.yml \
   data.campaign_filter="2016_Antarctica_DC8"
-
-# Create catalog
-python scripts/aggregate_parquet_catalog.py --config config/catalog.yaml
 ```
 
 ### Process All 2016 Data
 
 ```bash
-# Process all 2016 campaigns
-python scripts/build_catalog.py --config config/catalog.yaml \
+python scripts/build_catalog.py --config seasons/2008_Antarctica_BaslerJKB.yml \
   data.campaign_filter="2016_.*"
-
-# Aggregate
-python scripts/aggregate_parquet_catalog.py --config config/catalog.yaml
 ```
 
 ### Test Run
 
 ```bash
 # Quick test with limited data
-python scripts/build_catalog.py --config config/catalog.yaml --env test
+python scripts/build_catalog.py --config seasons/2008_Antarctica_BaslerJKB.yml --env test
 ```
 
 ### Incremental Updates
 
 ```bash
 # Process new campaign
-python scripts/build_catalog.py --config config/catalog.yaml \
-  data.campaigns.include='["2024_NewCampaign"]'
+python scripts/build_catalog.py --config seasons/2024_Antarctica_NewPlatform.yml
 
-# Regenerate catalog.json
-python scripts/aggregate_parquet_catalog.py --config config/catalog.yaml
+# Upload
+python scripts/upload_stac_catalogs.py catalog/2024_Antarctica_NewPlatform/ \
+  --credentials ~/.source_coop_token.json --execute
 ```
 
 ## Output Structure
 
 ```
 stac_catalog/
-├── config_used.yaml              # Configuration used
-├── 2016_Antarctica_DC8.parquet   # Campaign collection
-├── 2017_Antarctica_P3.parquet    # Campaign collection
-├── catalog.json                  # Aggregated catalog
-└── collections.json              # Collection metadata
+├── config_used.yaml                          # Configuration used for reproducibility
+├── 2008_Antarctica_BaslerJKB.parquet         # Campaign collection (geoparquet)
+└── 2016_Antarctica_DC8.parquet               # Campaign collection (geoparquet)
+```
+
+After upload, files are placed into the hive-partitioned layout on S3:
+
+```
+s3://us-west-2.opendata.source.coop/englacial/xopr/catalog/
+  hemisphere=south/
+    provider=utig/
+      collection=2008_Antarctica_BaslerJKB/
+        stac.parquet
 ```
 
 ## Benefits

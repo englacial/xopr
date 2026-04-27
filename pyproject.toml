@@ -41,6 +41,7 @@ stac = [
     "stac-fastapi-geoparquet[serve]",
     "omegaconf",
     "pyarrow",
+    "mortie",
 ]
 docs = [
     "mystmd",
@@ -53,6 +54,7 @@ docs = [
     "jupyter_bokeh",
     "rioxarray",
     "verde",
+    "earthaccess",
     "pdoc>=14.0.0",
 ]
 test = [
@@ -77,5 +79,6 @@ version-file = "src/xopr/_version.py"
 [tool.pytest.ini_options]
 addopts = "--cov=xopr --cov-report=xml --cov-report=term"
 markers = [
+    "slow: marks tests that require network access or large data (deselect with '-m \"not slow\"')",
     "integration: tests that download real data (may be slow)",
 ]
