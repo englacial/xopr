@@ -92,7 +92,7 @@ def get_layer_points(segment_name : str, season_name : str, location=None, layer
     if layer_names:
         data_payload["properties"]["lyr_name"] = layer_names
 
-    return _ops_api_request(f"/get/layer/points", data_payload, request_type='POST')
+    return _ops_api_request("/get/layer/points", data_payload, request_type='POST')
 
 def get_layer_metadata():
     """
@@ -104,7 +104,7 @@ def get_layer_metadata():
         API response as JSON containing layer metadata, or None if request fails.
     """
 
-    return _ops_api_request(f"/get/layers", {}, request_type='POST')
+    return _ops_api_request("/get/layers", {}, request_type='POST')
 
 def get_segment_metadata(segment_name : str, season_name : str):
     """
@@ -147,7 +147,7 @@ def get_segment_metadata(segment_name : str, season_name : str):
         }
     }
 
-    return _ops_api_request(f"/get/segment/metadata", data_payload)
+    return _ops_api_request("/get/segment/metadata", data_payload)
 
 
 def _ops_api_request(path, data, request_type='POST', headers=None, base_url=ops_base_url, retries=3, job_timeout=200, debug=False, initial_retry_time=1):

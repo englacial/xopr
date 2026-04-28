@@ -130,7 +130,7 @@ def ensure_bedmap_catalogs(force_download: bool = False) -> Optional[Path]:
             success = False
 
     if success:
-        print(f"Bedmap catalogs cached successfully")
+        print("Bedmap catalogs cached successfully")
         return catalog_dir
     else:
         print("Warning: Some catalogs failed to download")

@@ -418,10 +418,8 @@ class TestCollectUniformMetadata:
             ['sci:doi', 'sci:citation', 'sar:center_frequency', 'sar:bandwidth']
         )
 
-        # Should not have scientific extension due to non-uniform DOIs
-        sci_ext = 'https://stac-extensions.github.io/scientific/v1.0.0/schema.json'
-        # Note: SAR extension might still be present, but not SCI for DOI reasons
-
+        # Should not have scientific extension due to non-uniform DOIs.
+        # SAR extension might still be present, but not SCI for DOI reasons.
         # Extra fields should not have DOI (multiple unique values)
         assert 'sci:doi' not in extra_fields
 

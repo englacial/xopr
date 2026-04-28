@@ -120,7 +120,7 @@ def build_bedmap_geoparquet_catalog(
             continue
 
         if not metadata:
-            print(f"    Warning: No metadata found, skipping")
+            print("    Warning: No metadata found, skipping")
             continue
 
         # Get geometry - may be object or WKT string
@@ -143,7 +143,7 @@ def build_bedmap_geoparquet_catalog(
             geometry = geometry.simplify(simplify_tolerance, preserve_topology=True)
 
         if geometry is None:
-            print(f"    Warning: No geometry, skipping")
+            print("    Warning: No geometry, skipping")
             continue
 
         # Extract metadata fields

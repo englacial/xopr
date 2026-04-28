@@ -273,7 +273,7 @@ def create_timestamps(df: pd.DataFrame, metadata: Dict) -> pd.Series:
 
     if start_year is None:
         # No temporal information available
-        warnings.warn(f"No temporal information available, using current year as placeholder")
+        warnings.warn("No temporal information available, using current year as placeholder")
         start_year = end_year = datetime.now().year
 
     # Convert to timestamps

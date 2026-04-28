@@ -258,11 +258,11 @@ def _get_regions(
                 simplify_tolerance = 0
             elif area_km2 < 100000:
                 print(f"Area is {area_km2:.1f} km^2, automatically applying 100m simplification tolerance")
-                print(f"To disable simplification, set simplify_tolerance=0")
+                print("To disable simplification, set simplify_tolerance=0")
                 simplify_tolerance = 100
             else:
                 print(f"Area is {area_km2:.1f} km^2, automatically applying 1km simplification tolerance")
-                print(f"To disable simplification, set simplify_tolerance=0")
+                print("To disable simplification, set simplify_tolerance=0")
                 simplify_tolerance = 1000
 
         if simplify_tolerance and (simplify_tolerance > 0):
