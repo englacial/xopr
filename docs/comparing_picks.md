@@ -33,7 +33,7 @@ The output schema is a strict superset of the canonical `layer_gdf` schema used 
 
 For point and polygon comparisons we use the **`opr:mbox`** field that every xOPR STAC item carries: a list of 4 variable-resolution morton cells (default order 18) covering the frame's geometry, plus `opr:mpolygon` (12 cells) on every collection. These are computed at catalog-generation time by [`xopr.stac.morton.compute_mbox`](api/xopr.stac.morton.html#xopr.stac.morton.compute_mbox) and [`compute_mpolygon_from_items`](api/xopr.stac.morton.html#xopr.stac.morton.compute_mpolygon_from_items).
 
-The key invariant: **morton indices are hierarchical strings, so containment is prefix matching**. A query point at order 18 has a 19-digit morton string. If a frame's mbox cell is `12345`, every point whose morton starts with `12345` falls inside that cell. No polygon-polygon intersection — just `point_morton.startswith(cell_morton)`. This is the cheap inverted-index lookup that makes the bedmap and ATL06 backends fast even on millions of points.
+The key invariant: **morton indices are hierarchical strings, so containment is prefix matching**. The encoding is base-4 — every digit narrows the spatial cell to one of four quadrants — so a digit can only be `1`, `2`, `3`, or `4`. A query point at order 18 has a 19-digit morton string. If a frame's mbox cell is the 5-digit prefix `12343`, every point whose order-18 morton starts with `12343` falls inside that cell. No polygon-polygon intersection — just `point_morton.startswith(cell_morton)`. This is the cheap inverted-index lookup that makes the bedmap and ATL06 backends fast even on millions of points.
 
 To turn morton cells back into shapely Polygons (for visualization or exact intersection), use [`mbox_to_polygons`](api/xopr.stac.morton.html#xopr.stac.morton.mbox_to_polygons):
 
@@ -55,4 +55,9 @@ For OPR↔OPR self-intersection ([`crossovers.ipynb`](notebooks/crossovers.ipynb
 
 - The bedmap and ATL06 case studies fetch external data over the network on first run; expect each notebook to take a few minutes end-to-end.
 - [`bedmachine_comparison.ipynb`](notebooks/bedmachine_comparison.ipynb) requires NASA Earthdata credentials (via `earthaccess`) and is **not** re-executed by CI — see the warning at the top of that notebook for how to regenerate outputs locally.
-- The morton primitives require a STAC catalog produced after [PR #77](https://github.com/englacial/xopr/pull/77). Older catalogs lack the `opr:mbox` and `opr:mpolygon` columns; pick a reprocessed season from [issue #78](https://github.com/englacial/xopr/issues/78).
+- The morton primitives require a STAC catalog produced after [PR #77](https://github.com/englacial/xopr/pull/77). [`OPRConnection`](api/xopr.opr_access.html#xopr.opr_access.OPRConnection) syncs the catalog cache to your local machine on construction (cheap ETag check; no-op if nothing changed), so as new seasons are reprocessed under [issue #78](https://github.com/englacial/xopr/issues/78) you'll pick them up automatically. If you hit a missing-column error and suspect a stale cache, force a refresh manually:
+
+```python
+from xopr.stac_cache import sync_opr_catalogs
+sync_opr_catalogs()
+```
