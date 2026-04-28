@@ -241,6 +241,9 @@ async def main(  # noqa: PLR0912, PLR0914, PLR0915
                         f"Update code to set maching campaign for {shortname}"
                     )
             gdf_bedmap = gdf_bedmap.query(expr=f"name.str.startswith('{campaign}')")
+        else:
+            campaign :str = gdf_bedmap.iloc[0].id
+        print(f"... compare with BedMap collection: {campaign}")
 
 
         # BedMAP2 (dense XY points)
@@ -327,27 +330,37 @@ async def main(  # noqa: PLR0912, PLR0914, PLR0915
 
                 # Slow fallback using dense OPR xy points
                 if attempt == 3:
-                    # Apply temporal filter to reduce points to look at
-                    df_times: pd.Series = gdf_unlabelled.loc[head:tail].timestamp
-                    TIMESPAN = pd.Timedelta(value=2, unit="days")
-                    time_match: pd.Series = df_times[
-                        (df_times - segment.datetime) < TIMESPAN
-                    ]
-                    # (df_times - segment.datetime).plot(ylabel="timespan")
-                    if len(time_match) >= 2:
-                        head = int(time_match.head(n=1).index[0])
-                        tail = int(time_match.tail(n=1).index[0])  # tail_ = int(...)
-                        # df_time_delta = df_times.loc[head:tail_].diff(periods=1)
-                        # tail = int(
-                        #     df_time_delta[
-                        #         df_time_delta > pd.Timedelta(value=1, unit="hour")
-                        #     ].index[0]
-                        # )
-                    else:
-                        print(
-                            f"⛔ Failed to match OPR segment {segment.id}, reason: no close time matches"
-                        )
-                        continue
+                    valid_dt_seasons: set = {  # Seasons where datetime column is valid
+                        "BM3",
+                        "NASA_2011_ICEBRIDGE_AIR_BM2",
+                        "NASA_2012_ICEBRIDGE_AIR_BM2",
+                    }
+                    if any(c in campaign for c in valid_dt_seasons):
+                        # Apply temporal filter to reduce points to look at
+                        df_times: pd.Series = gdf_unlabelled.loc[head:tail].timestamp
+                        TIMESPAN = pd.Timedelta(value=2, unit="days")
+                        time_match: pd.Series = df_times[
+                            (df_times - segment.datetime) < TIMESPAN
+                        ]
+                        # (df_times - segment.datetime).plot(ylabel="timespan")
+                        if len(time_match) >= 2:
+                            head = int(time_match.head(n=1).index[0])
+                            tail = int(time_match.tail(n=1).index[0])
+                            # tail_ = int(...)
+                            # df_time_delta = df_times.loc[head:tail_].diff(periods=1)
+                            # tail = int(
+                            #     df_time_delta[
+                            #         df_time_delta > pd.Timedelta(value=1, unit="hour")
+                            #     ].index[0]
+                            # )
+                        else:
+                            print(
+                                f"⛔ Failed to match OPR segment {segment.id}, reason: no close time matches"
+                            )
+                            continue
+                    else:  # Seasons with invalid datetime (e.g. NASA_2009_ICEBRIDGE_AIR_BM2, NASA_2010_ICEBRIDGE_AIR_BM2)
+                        pass
+
                     # Continue with checking using dense XY points after temporal filter
                     print(
                         f"  Trying to match segment {segment.id} "
@@ -377,6 +390,9 @@ async def main(  # noqa: PLR0912, PLR0914, PLR0915
                         if all(df_dist_dense.loc[head_:tail_] < 0.5):
                             print(
                                 f"🙌 OPR segment {segment.id} matches BedMap points {head_}:{tail_} (slow)"
+                            )
+                            gdf_bedmap_dense.loc[head_:tail_, "opr_id"] = (  # label
+                                segment.id
                             )
                             continue
                         else:
