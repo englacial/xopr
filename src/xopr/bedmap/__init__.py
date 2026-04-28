@@ -27,6 +27,11 @@ from .geometry import (
     get_polar_bounds,
     simplify_multiline_geometry,
 )
+from .morton_match import (
+    classify_ambiguity,
+    disambiguate_matches,
+    match_bedmap_to_frames,
+)
 from .query import (
     fetch_bedmap,
     get_bedmap_cache_path,
@@ -58,6 +63,10 @@ __all__ = [
     'query_bedmap_local',
     'fetch_bedmap',
     'get_bedmap_cache_path',
+    # Morton matching
+    'match_bedmap_to_frames',
+    'disambiguate_matches',
+    'classify_ambiguity',
 ]
 
 __version__ = '0.1.0'

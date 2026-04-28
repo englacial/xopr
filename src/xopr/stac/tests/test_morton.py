@@ -2,8 +2,14 @@
 
 import numpy as np
 import pytest
+from shapely.geometry import Polygon
 
-from xopr.stac.morton import _extract_coords, compute_mbox, compute_mpolygon_from_items
+from xopr.stac.morton import (
+    _extract_coords,
+    compute_mbox,
+    compute_mpolygon_from_items,
+    mbox_to_polygons,
+)
 
 
 class TestExtractCoords:
@@ -124,3 +130,36 @@ class TestComputeMpolygon:
         result = compute_mpolygon_from_items(items)
         assert len(result) == 12
         assert all(isinstance(v, int) for v in result)
+
+
+class TestMboxToPolygons:
+    """Test mbox_to_polygons returns shapely Polygons in EPSG:4326."""
+
+    def test_returns_one_polygon_per_cell(self):
+        geom = {
+            "type": "LineString",
+            "coordinates": [[-69.86, -71.35], [-69.85, -71.36], [-69.84, -71.37]],
+        }
+        mbox = compute_mbox(geom)
+        polys = mbox_to_polygons(mbox)
+        assert len(polys) == 4
+        assert all(isinstance(p, Polygon) for p in polys)
+        assert all(p.is_valid for p in polys)
+
+    def test_round_trip_polygon_contains_source_point(self):
+        """A point used to build mbox should fall inside at least one cell polygon."""
+        from shapely.geometry import Point
+        lat, lon = -75.0, -60.0
+        geom = {"type": "Point", "coordinates": [lon, lat]}
+        mbox = compute_mbox(geom)
+        polys = mbox_to_polygons(mbox)
+        pt = Point(lon, lat)
+        assert any(p.contains(pt) or p.touches(pt) or p.distance(pt) < 1e-6
+                   for p in polys), "source point should fall inside at least one cell"
+
+    def test_duplicates_preserved(self):
+        """If input has duplicate cells (from padding), output preserves them."""
+        geom = {"type": "Point", "coordinates": [-60.0, -75.0]}
+        mbox = compute_mbox(geom)
+        polys = mbox_to_polygons(mbox)
+        assert len(polys) == len(mbox)

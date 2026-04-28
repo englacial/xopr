@@ -1,4 +1,4 @@
-"""Tests for xopr.crossovers — frame-to-granule mapping via morton cells."""
+"""Tests for xopr.matching — frame-to-granule mapping via morton cells."""
 
 import geopandas as gpd
 import numpy as np
@@ -7,7 +7,7 @@ from mortie import geo_morton_polygon
 from pyproj import Transformer
 from shapely.geometry import LineString, Polygon
 
-from xopr.crossovers import (
+from xopr.matching import (
     build_granule_prefix_index,
     build_granule_strtree,
     cmr_bbox_from_mpolygon,

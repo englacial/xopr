@@ -10,6 +10,7 @@ from xopr.bedmap.morton_match import (
     _build_mbox_lookup,
     _find_contiguous_runs,
     _morton_prefix_match,
+    classify_ambiguity,
     disambiguate_matches,
     match_bedmap_to_frames,
 )
@@ -178,3 +179,41 @@ def test_disambiguate_matches():
     assert disambig.iloc[1]['assigned_frame'] == 2
     # All distances should be finite
     assert np.all(np.isfinite(disambig['nearest_distance_m']))
+
+
+def test_classify_ambiguity_unique():
+    assert classify_ambiguity([]) == 'unique'
+    assert classify_ambiguity([(5, '20091020', 1, 'X')]) == 'unique'
+
+
+def test_classify_ambiguity_consecutive():
+    cands = [
+        (5, '20091020', 1, 'A'),
+        (5, '20091020', 2, 'B'),
+        (5, '20091020', 3, 'C'),
+    ]
+    assert classify_ambiguity(cands) == 'consecutive'
+
+
+def test_classify_ambiguity_cross_segment_multiple_segments():
+    cands = [
+        (5, '20091020', 1, 'A'),
+        (6, '20091020', 1, 'B'),
+    ]
+    assert classify_ambiguity(cands) == 'cross_segment'
+
+
+def test_classify_ambiguity_cross_segment_multiple_dates():
+    cands = [
+        (5, '20091020', 1, 'A'),
+        (5, '20091021', 1, 'B'),
+    ]
+    assert classify_ambiguity(cands) == 'cross_segment'
+
+
+def test_classify_ambiguity_cross_segment_nonadjacent_frames():
+    cands = [
+        (5, '20091020', 1, 'A'),
+        (5, '20091020', 5, 'B'),  # gap from 1 to 5
+    ]
+    assert classify_ambiguity(cands) == 'cross_segment'

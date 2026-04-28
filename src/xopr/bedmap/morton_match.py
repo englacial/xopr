@@ -115,6 +115,56 @@ def match_bedmap_to_frames(stac_gdf, bedmap_gdf, order=18):
     return result
 
 
+def classify_ambiguity(candidates):
+    """Classify a list of candidate frames as ``'unique'``, ``'consecutive'``, or ``'cross_segment'``.
+
+    Useful for diagnosing why a bedmap point has multiple morton matches:
+
+    - ``'unique'`` — exactly one candidate (no ambiguity).
+    - ``'consecutive'`` — every candidate is in the same ``(opr:date, opr:segment)``
+      group AND their frame numbers form a contiguous run (a frame-boundary
+      overlap, expected and benign).
+    - ``'cross_segment'`` — candidates span multiple segments, multiple dates,
+      or non-adjacent frames within one segment (overlapping flight lines or
+      revisits).
+
+    Parameters
+    ----------
+    candidates : list of tuple
+        ``(segment, date, frame, item_id)`` tuples as produced by
+        :func:`match_bedmap_to_frames`.
+
+    Returns
+    -------
+    str
+        One of ``'unique'``, ``'consecutive'``, ``'cross_segment'``.
+        Returns ``'unique'`` for empty or single-candidate input.
+
+    Examples
+    --------
+    >>> result = match_bedmap_to_frames(stac_gdf, bedmap_gdf)
+    >>> result['ambiguity'] = result['opr_candidates'].apply(classify_ambiguity)
+    >>> result['ambiguity'].value_counts()
+    """
+    if len(candidates) <= 1:
+        return 'unique'
+
+    by_seg = {}
+    for seg, date, frame, _ in candidates:
+        by_seg.setdefault((seg, date), []).append(frame)
+
+    # Multiple (segment, date) groups → cross-segment
+    if len(by_seg) > 1:
+        return 'cross_segment'
+
+    # Single group: are all frames adjacent?
+    frames_sorted = sorted(by_seg[next(iter(by_seg))])
+    for i in range(1, len(frames_sorted)):
+        if frames_sorted[i] - frames_sorted[i - 1] > 1:
+            return 'cross_segment'
+    return 'consecutive'
+
+
 def _build_frame_groups(stac_gdf, group_size):
     """Group adjacent frames within each (date, segment).
 

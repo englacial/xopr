@@ -1,15 +1,17 @@
-"""Map xopr STAC frames to ICESat-2 (or other CMR-indexed) granules.
+"""Spatial matching of xopr STAC frames against external datasets.
 
-One CMR query per invocation builds a local granule index; per-frame
-matching then intersects each frame's ``opr:mbox`` cells (4 morton cells
-per frame, variable resolution) against that index. Two backends are
-provided and produce the same hits:
+Provides primitives for matching xopr frames (with ``opr:mbox`` morton
+coverage) against three classes of external geometry:
 
-- :func:`match_frames_to_granules` — shapely STRtree over projected
-  granule polygons; exact polygon-polygon intersection per mbox cell.
-- :func:`match_frames_to_granules_prefix` — bidirectional morton prefix
-  matching against each granule's own variable-resolution mbox
-  (generalizes :mod:`xopr.bedmap.morton_match`).
+- **Polygon datasets indexed by NASA CMR** (e.g. ICESat-2 ATL06 granules).
+  One CMR query per invocation builds a local index; two backends
+  (:func:`match_frames_to_granules` via shapely STRtree, and
+  :func:`match_frames_to_granules_prefix` via bidirectional morton prefix
+  matching) produce the same hits.
+- **Point sets** — see :func:`subset_frames_by_points` for the fast
+  prefix-based pre-filter (same containment test as
+  :mod:`xopr.bedmap.morton_match`).
+- **Other STAC catalogs** — same building blocks apply.
 
 The CMR query helper is a minimal vendored subset of
 ``magg.catalog.query_cmr`` (englacial/magg) so xopr avoids a runtime
@@ -22,19 +24,13 @@ from typing import Optional
 import numpy as np
 import requests
 from mortie import geo2mort
-from mortie.tools import mort2polygon
 from pyproj import Transformer
 from shapely import STRtree, make_valid
 from shapely.geometry import Polygon
 
+from .stac.morton import mbox_to_polygons
+
 CMR_GRANULES_URL = "https://cmr.earthdata.nasa.gov/search/granules.umm_json"
-
-
-def _cell_polygon_4326(cell, step=32):
-    """Reconstruct a shapely Polygon in EPSG:4326 from a morton cell id."""
-    verts = mort2polygon(int(cell), step=step)  # [[lat, lon], ...]
-    arr = np.asarray(verts)
-    return Polygon(zip(arr[:, 1], arr[:, 0]))  # (lon, lat)
 
 
 def _reproject_polygon(poly, transformer):
@@ -60,7 +56,7 @@ def cmr_bbox_from_mpolygon(mpolygon, step=32):
     tuple of float
         Bounding box in lon/lat.
     """
-    polys = [_cell_polygon_4326(c, step=step) for c in mpolygon]
+    polys = mbox_to_polygons(mpolygon, step=step)
     union = polys[0]
     for p in polys[1:]:
         union = union.union(p)
@@ -272,8 +268,9 @@ def match_frames_to_granules(
     counts = []
     for mbox in frames_gdf["opr:mbox"].values:
         seen = {}
-        for cell in mbox:
-            cell_poly = _reproject_polygon(_cell_polygon_4326(cell, step=step), transformer)
+        cell_polys_4326 = mbox_to_polygons(mbox, step=step)
+        for cell_poly_4326 in cell_polys_4326:
+            cell_poly = _reproject_polygon(cell_poly_4326, transformer)
             hits = granule_tree.query(cell_poly, predicate="intersects")
             for idx in hits:
                 rec = granule_records[int(idx)]

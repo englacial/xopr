@@ -66,6 +66,7 @@ from rustac import DuckdbClient
 
 from . import opr_tools, ops_api
 from .cf_units import apply_cf_compliant_attrs
+from .radar_util import layer_twtt_to_range
 from .matlab_attribute_utils import (
     decode_hdf5_matlab_variable,
     extract_legacy_mat_attributes,
@@ -1054,3 +1055,181 @@ class OPRConnection:
                     return None
         else:
             raise ValueError("Invalid source specified. Must be one of: 'auto', 'files', 'db'.")
+
+    def _row_to_stac_dict(self, row):
+        """Convert a frames-gdf row (flat or nested) to a STAC-item-style dict.
+
+        The :meth:`query_frames` form keeps STAC properties as a nested
+        ``properties`` column. Flattened catalogs (e.g. source.coop parquets)
+        instead have ``opr:date``/``opr:segment``/``opr:frame`` as top-level
+        columns. Both forms are normalized here.
+        """
+        if 'properties' in row.index and isinstance(row.get('properties'), dict):
+            properties = row['properties']
+        else:
+            properties = {}
+            for col in ('opr:date', 'opr:segment', 'opr:frame', 'opr:mbox'):
+                if col in row.index:
+                    properties[col] = row[col]
+        return {
+            'id': row.get('id'),
+            'collection': row.get('collection'),
+            'geometry': row.get('geometry'),
+            'properties': properties,
+            'assets': row.get('assets', {}) if 'assets' in row.index else {},
+        }
+
+    def _normalize_frames_input(self, frames):
+        """Normalize a frames input (gdf, Series, dict, pystac.Item) to a list of STAC dicts."""
+        if isinstance(frames, gpd.GeoDataFrame) or isinstance(frames, pd.DataFrame):
+            return [self._row_to_stac_dict(row) for _, row in frames.iterrows()]
+        if isinstance(frames, pd.Series):
+            return [self._row_to_stac_dict(frames)]
+        if isinstance(frames, dict):
+            return [frames]
+        if hasattr(frames, 'to_dict'):  # pystac.Item or compatible
+            return [frames.to_dict()]
+        raise TypeError(
+            f"frames must be GeoDataFrame, Series, dict, or pystac.Item; got {type(frames).__name__}"
+        )
+
+    def load_bed_picks(
+        self,
+        frames,
+        layer: str = 'standard:bottom',
+        vertical: str = 'wgs84',
+        target_crs: str = None,
+        keep_mbox: bool = False,
+        show_progress: bool = True,
+    ) -> gpd.GeoDataFrame:
+        """
+        Load layer picks for one or many frames into a flat GeoDataFrame.
+
+        For each input frame this fetches the requested layer plus the
+        ``standard:surface`` layer (needed to convert TWTT to elevation),
+        drops samples with missing layer data, and tags every pick with
+        the source frame's STAC id and frame identifiers.
+
+        The output schema is a strict superset of the layer-parquet
+        schema, so it is a drop-in ``layer_gdf`` for
+        :func:`xopr.bedmap.morton_match.disambiguate_matches`.
+
+        Parameters
+        ----------
+        frames : gpd.GeoDataFrame, pd.Series, dict, or pystac.Item
+            One or many frames to load picks for. Accepts:
+
+            - GeoDataFrame from :meth:`query_frames` (one row per frame)
+            - A single row of that GeoDataFrame (``pd.Series``)
+            - A STAC item as nested dict (e.g. ``item.to_dict()``)
+            - A ``pystac.Item`` instance
+        layer : str, default 'standard:bottom'
+            Layer name in the OPR layer file.
+        vertical : {'wgs84', 'range'}, default 'wgs84'
+            Vertical coordinate to compute. ``'wgs84'`` requires the
+            surface layer's ``elev`` field.
+        target_crs : str, optional
+            If given, project pick coordinates to this CRS (e.g.
+            ``'EPSG:3031'``). If None, picks stay in EPSG:4326.
+        keep_mbox : bool, default False
+            If True, attach the source frame's ``opr:mbox`` to every pick
+            row (handy for downstream morton filtering without re-loading
+            the catalog).
+        show_progress : bool, default True
+            Show a tqdm progress bar when loading multiple frames.
+
+        Returns
+        -------
+        gpd.GeoDataFrame
+            One row per pick. Columns:
+
+            - ``geometry`` — Point in ``target_crs`` (or EPSG:4326)
+            - ``<vertical>`` — the requested vertical coordinate
+            - ``twtt`` — two-way travel time
+            - ``slow_time`` — pick timestamp
+            - ``id`` — STAC item id of the source frame
+            - ``collection`` — STAC collection name
+            - ``opr:date``, ``opr:segment``, ``opr:frame`` — frame identifiers
+            - ``segment_path`` — ``f"{opr:date}_{opr:segment:02d}"``
+            - ``opr:mbox`` — only if ``keep_mbox=True``
+
+            Frames whose layer is unavailable are silently skipped.
+
+        Examples
+        --------
+        >>> opr = xopr.OPRConnection()
+        >>> frames = opr.query_frames(collections=['2009_Antarctica_DC8'])
+        >>> picks = opr.load_bed_picks(frames, target_crs='EPSG:3031')
+        >>> picks[['id', 'wgs84', 'segment_path']].head()
+        """
+        frames_list = self._normalize_frames_input(frames)
+
+        iterator = frames_list
+        if show_progress and len(frames_list) > 1:
+            try:
+                from tqdm.auto import tqdm
+                iterator = tqdm(frames_list, desc='Loading bed picks')
+            except ImportError:
+                pass
+
+        pick_dfs = []
+        for frame_dict in iterator:
+            try:
+                layers = self.get_layers(frame_dict, errors='warn')
+            except Exception:
+                continue
+            if layers is None or layer not in layers or 'standard:surface' not in layers:
+                continue
+
+            ds = layer_twtt_to_range(
+                layers[layer], layers['standard:surface'],
+                vertical_coordinate=vertical,
+            )
+            ds = ds.dropna('slow_time', subset=[vertical])
+            n = ds.sizes.get('slow_time', 0)
+            if n == 0:
+                continue
+
+            props = frame_dict.get('properties', {}) or {}
+            opr_date = props.get('opr:date')
+            opr_segment = int(props['opr:segment']) if props.get('opr:segment') is not None else None
+            opr_frame = int(props['opr:frame']) if props.get('opr:frame') is not None else None
+            segment_path = (
+                f"{opr_date}_{opr_segment:02d}"
+                if opr_date is not None and opr_segment is not None
+                else None
+            )
+
+            df = pd.DataFrame({
+                vertical: ds[vertical].values,
+                'twtt': ds['twtt'].values if 'twtt' in ds else np.full(n, np.nan),
+                'slow_time': ds['slow_time'].values,
+                'id': frame_dict.get('id'),
+                'collection': frame_dict.get('collection'),
+                'opr:date': opr_date,
+                'opr:segment': opr_segment,
+                'opr:frame': opr_frame,
+                'segment_path': segment_path,
+                '_lon': ds['lon'].values,
+                '_lat': ds['lat'].values,
+            })
+            if keep_mbox and 'opr:mbox' in props:
+                df['opr:mbox'] = [props['opr:mbox']] * n
+            pick_dfs.append(df)
+
+        if not pick_dfs:
+            cols = [vertical, 'twtt', 'slow_time', 'id', 'collection',
+                    'opr:date', 'opr:segment', 'opr:frame', 'segment_path']
+            if keep_mbox:
+                cols.append('opr:mbox')
+            empty = pd.DataFrame({c: pd.Series(dtype='object') for c in cols})
+            out = gpd.GeoDataFrame(empty, geometry=gpd.GeoSeries([], crs='EPSG:4326'))
+            return out.to_crs(target_crs) if target_crs else out
+
+        combined = pd.concat(pick_dfs, ignore_index=True)
+        geom = gpd.points_from_xy(combined['_lon'], combined['_lat'])
+        combined = combined.drop(columns=['_lon', '_lat'])
+        out = gpd.GeoDataFrame(combined, geometry=geom, crs='EPSG:4326')
+        if target_crs is not None:
+            out = out.to_crs(target_crs)
+        return out

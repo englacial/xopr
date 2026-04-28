@@ -229,3 +229,76 @@ def _calculate_crossing_angle(line1, line2, intersection_point):
         crossing_angle = 180 - crossing_angle
 
     return crossing_angle
+
+
+def compute_crossover_error(picks_1, picks_2, point, vertical='wgs84'):
+    """Bed-elevation difference at a crossover point between two frames.
+
+    Given two frames' worth of bed picks (typically from
+    :meth:`xopr.OPRConnection.load_bed_picks`) and the crossover point
+    where the flight lines cross (typically from :func:`find_intersections`),
+    this returns the elevation of each frame's nearest pick to that point
+    plus the distance between those two picks. The two pick GeoDataFrames
+    must share a CRS, and that CRS must be projected (e.g. EPSG:3031).
+
+    Pure geometry — no I/O, no twtt arithmetic.
+
+    Parameters
+    ----------
+    picks_1, picks_2 : geopandas.GeoDataFrame
+        Bed picks for the two frames. Must have a ``vertical`` column
+        (default ``'wgs84'``) and a Point geometry. Both must use the
+        same projected CRS.
+    point : shapely.geometry.Point
+        Crossover point in the same CRS as the picks.
+    vertical : str, default 'wgs84'
+        Column to read elevation from.
+
+    Returns
+    -------
+    elev_1, elev_2 : float
+        Elevation of each frame's nearest pick to ``point``.
+    distance_between_picks : float
+        Distance between the two nearest picks, in CRS units.
+
+    Examples
+    --------
+    >>> picks = opr.load_bed_picks(frames, target_crs='EPSG:3031')
+    >>> intersections = xopr.find_intersections(frames.to_crs('EPSG:3031'))
+    >>> for _, row in intersections.iterrows():
+    ...     p1 = picks[picks['id'] == row['id_1']]
+    ...     p2 = picks[picks['id'] == row['id_2']]
+    ...     e1, e2, d = compute_crossover_error(p1, p2, row.intersection_geometry)
+    """
+    import numpy as np
+
+    if picks_1.crs is None or picks_2.crs is None:
+        raise ValueError("picks_1 and picks_2 must have a CRS set")
+    if picks_1.crs != picks_2.crs:
+        raise ValueError(
+            f"picks_1 and picks_2 have different CRSs: {picks_1.crs} vs {picks_2.crs}"
+        )
+    if picks_1.crs.is_geographic:
+        raise ValueError(
+            f"picks have a geographic CRS ({picks_1.crs}); reproject to a "
+            f"projected CRS (e.g. EPSG:3031) before measuring distances"
+        )
+    if vertical not in picks_1.columns or vertical not in picks_2.columns:
+        raise KeyError(f"vertical column {vertical!r} missing from picks")
+    if len(picks_1) == 0 or len(picks_2) == 0:
+        return np.nan, np.nan, np.nan
+
+    px, py = float(point.x), float(point.y)
+
+    x1 = picks_1.geometry.x.values
+    y1 = picks_1.geometry.y.values
+    i1 = int(np.argmin((x1 - px) ** 2 + (y1 - py) ** 2))
+
+    x2 = picks_2.geometry.x.values
+    y2 = picks_2.geometry.y.values
+    i2 = int(np.argmin((x2 - px) ** 2 + (y2 - py) ** 2))
+
+    elev_1 = float(picks_1[vertical].iloc[i1])
+    elev_2 = float(picks_2[vertical].iloc[i2])
+    dist = float(np.hypot(x1[i1] - x2[i2], y1[i1] - y2[i2]))
+    return elev_1, elev_2, dist

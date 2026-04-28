@@ -1,6 +1,10 @@
+import geopandas as gpd
+import numpy as np
 import pytest
+from shapely.geometry import Point
 
 import xopr.geometry
+from xopr.geometry import grid_points
 
 test_regions = [
     pytest.param({'regions': 'East'}, {'projection': 'EPSG:3031', 'area': 10498117e6},
@@ -98,3 +102,73 @@ def test_get_greenland_regions_fields():
 
     # Check that we have at least one region
     assert len(regions) > 0, "Expected at least one region"
+
+
+# ---------------------------------------------------------------------------
+# grid_points
+# ---------------------------------------------------------------------------
+
+
+def _random_points_gdf(n=200, box=10000.0, seed=42, mean=-1000.0, std=50.0):
+    """Random projected points with a numeric column for testing."""
+    rng = np.random.default_rng(seed)
+    xs = rng.uniform(0, box, n)
+    ys = rng.uniform(0, box, n)
+    vals = rng.normal(loc=mean, scale=std, size=n)
+    return gpd.GeoDataFrame(
+        {'wgs84': vals},
+        geometry=gpd.points_from_xy(xs, ys),
+        crs='EPSG:3031',
+    )
+
+
+def test_grid_points_returns_dataset_with_expected_vars():
+    gdf = _random_points_gdf()
+    grid = grid_points(gdf, column='wgs84', spacing=2000)
+    assert set(grid.data_vars) == {'wgs84_median', 'wgs84_std', 'wgs84_count'}
+    assert dict(grid.sizes) == {'y': 5, 'x': 5}
+    assert int(grid['wgs84_count'].sum()) == len(gdf)
+
+
+def test_grid_points_custom_aggregations():
+    gdf = _random_points_gdf()
+    grid = grid_points(gdf, column='wgs84', spacing=2000,
+                       aggregations=('mean', 'min', 'max'))
+    assert set(grid.data_vars) == {'wgs84_mean', 'wgs84_min', 'wgs84_max'}
+    valid = ~np.isnan(grid['wgs84_mean'].values)
+    assert np.all(grid['wgs84_min'].values[valid] <= grid['wgs84_mean'].values[valid])
+    assert np.all(grid['wgs84_mean'].values[valid] <= grid['wgs84_max'].values[valid])
+
+
+def test_grid_points_empty_cells_are_nan():
+    pts = gpd.GeoDataFrame(
+        {'wgs84': [-1000.0, -1010.0]},
+        geometry=[Point(500, 500), Point(7500, 7500)],
+        crs='EPSG:3031',
+    )
+    grid = grid_points(pts, column='wgs84', spacing=2000)
+    assert np.isnan(grid['wgs84_median'].values).sum() > 0
+    assert int(grid['wgs84_count'].sum()) == 2
+
+
+def test_grid_points_rejects_geographic_crs():
+    gdf = gpd.GeoDataFrame(
+        {'wgs84': [-1000.0]},
+        geometry=[Point(0.0, -75.0)],
+        crs='EPSG:4326',
+    )
+    with pytest.raises(ValueError, match='geographic CRS'):
+        grid_points(gdf, column='wgs84', spacing=1000)
+
+
+def test_grid_points_rejects_missing_column():
+    gdf = _random_points_gdf()
+    with pytest.raises(KeyError, match="'missing'"):
+        grid_points(gdf, column='missing', spacing=2000)
+
+
+def test_grid_points_explicit_bounds():
+    gdf = _random_points_gdf()
+    grid = grid_points(gdf, column='wgs84', spacing=2000,
+                       bounds=(-2000, -2000, 12000, 12000))
+    assert dict(grid.sizes) == {'y': 7, 'x': 7}
