@@ -82,7 +82,9 @@ def mat_to_linestring(url: str) -> shapely.geometry.LineString:
 # %%
 async def load_geodataframes() -> gpd.GeoDataFrame:
     """
-    Load BedMap2 and BedMap3 GeoDataFrame rows with CReSIS institution.
+    Load BedMap2 and BedMap3 STAC-GeoDataFrame rows.
+
+    Specifically those with CReSIS institution, or the JARE/NIPR 2018 expedition.
 
     Returns
     -------
@@ -98,13 +100,13 @@ async def load_geodataframes() -> gpd.GeoDataFrame:
         store=store, path="bedmap3.parquet"
     )
     gdf: gpd.GeoDataFrame = pd.concat(objs=[gdf_bm2, gdf_bm3], ignore_index=True)
-    gdf.institution.unique()
+    # print(gdf.institution.unique())
 
-    gdf_cresis: gpd.GeoDataFrame = gdf.query(
-        expr="institution.str.startswith('Center for Remote Sensing of Ice Sheets')"
+    gdf_stac: gpd.GeoDataFrame = gdf.query(
+        expr="institution.str.startswith('Center for Remote Sensing of Ice Sheets') or "
+        "name == 'NIPR_2018_JARE60_GRN_BM3'"
     )
-    len(gdf_cresis)
-    print(gdf_cresis[["name"]])
+    print(gdf_stac[["name"]])
     #                                  name
     # 31        NASA_2002_ICEBRIDGE_AIR_BM2
     # 32        NASA_2004_ICEBRIDGE_AIR_BM2
@@ -121,7 +123,8 @@ async def load_geodataframes() -> gpd.GeoDataFrame:
     # 101       NASA_2017_ICEBRIDGE_AIR_BM3
     # 102       NASA_2018_ICEBRIDGE_AIR_BM3
     # 103       NASA_2019_ICEBRIDGE_AIR_BM3
-    return gdf_cresis
+    # 111          NIPR_2018_JARE60_GRN_BM3
+    return gdf_stac
 
 
 # %%
@@ -180,10 +183,11 @@ def get_store_and_prefixes() -> tuple[obs.store.S3Store, dict[str, str]]:
 
 # %%
 async def main(  # noqa: PLR0912, PLR0914, PLR0915
-    gdf_cresis: gpd.GeoDataFrame, store: obs.store.S3Store, prefixes: dict[str, str]
+    gdf_stac: gpd.GeoDataFrame, store: obs.store.S3Store, prefixes: dict[str, str]
 ):
     """
-    Determine overlap data for years 2002, 2004, 2009, 2010, 2011, 2012.
+    Determine overlap data for years:
+    2002, 2004, 2009, 2010, 2011, 2012, 2013, 2014, 2016, 2018, 2019.
 
     | BedMap2 | OPR |
     |---------|-----|
@@ -203,6 +207,7 @@ async def main(  # noqa: PLR0912, PLR0914, PLR0915
     | NASA_2016_ICEBRIDGE_AIR_BM3 | 2016_Antarctica_DC8 |
     | NASA_2017_ICEBRIDGE_AIR_BM3 | 2017_Antarctica_Basler |
     | NASA_2018_ICEBRIDGE_AIR_BM3 | 2018_Antarctica_DC8 |
+    | NIPR_2018_JARE60_GRN_BM3    | 2018_Antarctica_Ground |
     | NASA_2019_ICEBRIDGE_AIR_BM3 | 2019_Antarctica_GV |
 
     """
@@ -221,11 +226,15 @@ async def main(  # noqa: PLR0912, PLR0914, PLR0915
         assert len(gdf_opr) >= 1
 
         # BedMAP2 (simplified/sparse points)
-        gdf_bedmap = gdf_cresis.query(expr=f"name.str.contains('{year}')").to_crs(
+        gdf_bedmap = gdf_stac.query(expr=f"name.str.contains('{year}')").to_crs(
             epsg=3031
         )
         if len(gdf_bedmap) > 1:  # handle multiple campaigns in one year
             match shortname:
+                case "2018_Antarctica_DC8":
+                    campaign = "NASA_2018_ICEBRIDGE_AIR_BM3"
+                case "2018_Antarctica_Ground":
+                    campaign = "NIPR_2018_JARE60_GRN_BM3"
                 case "2013_Antarctica_P3":
                     campaign = "NASA_2013_ICEBRIDGE_AIR_BM3"
                 case "2013_Antarctica_Basler":
@@ -242,7 +251,7 @@ async def main(  # noqa: PLR0912, PLR0914, PLR0915
                     )
             gdf_bedmap = gdf_bedmap.query(expr=f"name.str.startswith('{campaign}')")
         else:
-            campaign :str = gdf_bedmap.iloc[0].id
+            campaign: str = gdf_bedmap.iloc[0].id
         print(f"... compare with BedMap collection: {campaign}")
 
 
@@ -418,12 +427,12 @@ async def main(  # noqa: PLR0912, PLR0914, PLR0915
 # %%
 if __name__ == "__main__":
     print("------------------ Loading simplified Bedmap geometries ------------------")
-    gdf_cresis: gpd.GeoDataFrame = asyncio.run(main=load_geodataframes())
+    gdf_stac: gpd.GeoDataFrame = asyncio.run(main=load_geodataframes())
 
     print("---------------------- Getting OPR CReSIS campaigns ----------------------")
     store, prefixes = get_store_and_prefixes()
 
     print("---------------------------- Starting main loop ---------------------------")
-    asyncio.run(main=main(gdf_cresis=gdf_cresis, store=store, prefixes=prefixes))
+    asyncio.run(main=main(gdf_stac=gdf_stac, store=store, prefixes=prefixes))
 
     print("Done!")
