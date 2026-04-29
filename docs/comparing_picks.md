@@ -26,7 +26,7 @@ The output schema is a strict superset of the canonical `layer_gdf` schema used 
 |---|---|---|---|
 | OPR flight lines (the same dataset, comparing to itself) | Spatial join on simplified line geometries → nearest-pick lookup at each crossing | [`xopr.find_intersections`](api/xopr.opr_tools.html#xopr.opr_tools.find_intersections) + [`xopr.opr_tools.compute_crossover_error`](api/xopr.opr_tools.html#xopr.opr_tools.compute_crossover_error) | [`crossovers.ipynb`](notebooks/crossovers.ipynb) |
 | Continuous gridded raster (e.g. BedMachine, Bedmap-DEM) | Bilinear interpolation at each pick coordinate | `xarray.DataArray.interp` (no xopr-specific API needed) | [`bedmachine_comparison.ipynb`](notebooks/bedmachine_comparison.ipynb) |
-| External point cloud (e.g. Bedmap pick database) | Morton-prefix containment + along-track disambiguation | [`xopr.bedmap.match_bedmap_to_frames`](api/xopr.bedmap.html#xopr.bedmap.match_bedmap_to_frames) + [`disambiguate_matches`](api/xopr.bedmap.html#xopr.bedmap.disambiguate_matches) | [`bedmap_match.ipynb`](notebooks/bedmap_match.ipynb) |
+| External point cloud (e.g. Bedmap pick database) | Morton-prefix containment + along-track disambiguation | [`xopr.bedmap.match_bedmap_to_frames`](api/xopr.bedmap.html#xopr.bedmap.match_bedmap_to_frames) + [`disambiguate_matches`](api/xopr.bedmap.html#xopr.bedmap.disambiguate_matches) | _(walkthrough notebook in development; see API docs in the meantime)_ |
 | External polygon dataset (e.g. ICESat-2 ATL06 granules from CMR) | Morton-prefix containment OR shapely STRtree exact intersection | [`xopr.matching`](api/xopr.matching.html) | [`xopr_atl06_crossovers.ipynb`](notebooks/xopr_atl06_crossovers.ipynb) |
 
 ## Why morton indexing for points and polygons
