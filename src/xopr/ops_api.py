@@ -29,11 +29,29 @@ def get_layer_points(segment_name : str, season_name : str, location=None, layer
     Parameters
     ----------
     segment_name : str
-        The segment name
+        OPS segment identifier in the form ``"YYYYMMDD_SS"`` — an
+        acquisition date plus a zero-padded two-digit segment number,
+        joined by an underscore. **Always a string**, not an int. This is
+        the same value xopr stores as ``segment_path`` on a STAC item, and
+        is the middle portion of a frame id (e.g. for the frame
+        ``"Data_20231229_02_017"``, the corresponding ``segment_name`` is
+        ``"20231229_02"``).
+
+        Examples of valid values:
+
+        - ``"20231229_02"``
+        - ``"20230109_01"``
+        - ``"20191105_01"``
+
+        Examples of values that look similar but are **not** valid segment
+        names: ``"20161014"`` (missing segment), ``"20161117_06_b"``
+        (extra suffix), ``"Data_20231229_02_017"`` (full frame id, not a
+        segment).
     season_name : str
-        The season name
+        OPS season name, e.g. ``"2023_Antarctica_BaslerMKB"``.
     location : str, optional
-        The location, either 'arctic' or 'antarctic'. If None, inferred from season_name.
+        ``'arctic'`` or ``'antarctic'``. If None, inferred from
+        ``season_name``.
     layer_names : list of str, optional
         List of layer names to retrieve. If None, retrieves all layers.
     include_geometry : bool, optional
@@ -47,7 +65,8 @@ def get_layer_points(segment_name : str, season_name : str, location=None, layer
     Raises
     ------
     ValueError
-        If neither segment_id nor both segment_name and season_name are provided.
+        If ``location`` is not given and cannot be inferred from
+        ``season_name``.
     """
 
     if location is None:
@@ -73,7 +92,7 @@ def get_layer_points(segment_name : str, season_name : str, location=None, layer
     if layer_names:
         data_payload["properties"]["lyr_name"] = layer_names
 
-    return _ops_api_request(f"/get/layer/points", data_payload, request_type='POST')
+    return _ops_api_request("/get/layer/points", data_payload, request_type='POST')
 
 def get_layer_metadata():
     """
@@ -85,7 +104,7 @@ def get_layer_metadata():
         API response as JSON containing layer metadata, or None if request fails.
     """
 
-    return _ops_api_request(f"/get/layers", {}, request_type='POST')
+    return _ops_api_request("/get/layers", {}, request_type='POST')
 
 def get_segment_metadata(segment_name : str, season_name : str):
     """
@@ -93,20 +112,32 @@ def get_segment_metadata(segment_name : str, season_name : str):
 
     Parameters
     ----------
-    segment_name : str, optional
-        The segment name (alternative to segment_id).
-    season_name : str, optional
-        The season name (required if using segment_name).
+    segment_name : str
+        OPS segment identifier in the form ``"YYYYMMDD_SS"`` — an
+        acquisition date plus a zero-padded two-digit segment number,
+        joined by an underscore. **Always a string**, not an int. This is
+        the same value xopr stores as ``segment_path`` on a STAC item, and
+        is the middle portion of a frame id (e.g. for the frame
+        ``"Data_20231229_02_017"``, the corresponding ``segment_name`` is
+        ``"20231229_02"``).
+
+        Examples of valid values:
+
+        - ``"20231229_02"``
+        - ``"20230109_01"``
+        - ``"20191105_01"``
+
+        Examples of values that look similar but are **not** valid segment
+        names: ``"20161014"`` (missing segment), ``"20161117_06_b"``
+        (extra suffix), ``"Data_20231229_02_017"`` (full frame id, not a
+        segment).
+    season_name : str
+        OPS season name, e.g. ``"2023_Antarctica_BaslerMKB"``.
 
     Returns
     -------
     dict or None
         API response as JSON containing segment metadata, or None if request fails.
-
-    Raises
-    ------
-    ValueError
-        If neither segment_id nor both segment_name and season_name are provided.
     """
 
     data_payload = {
@@ -116,7 +147,7 @@ def get_segment_metadata(segment_name : str, season_name : str):
         }
     }
 
-    return _ops_api_request(f"/get/segment/metadata", data_payload)
+    return _ops_api_request("/get/segment/metadata", data_payload)
 
 
 def _ops_api_request(path, data, request_type='POST', headers=None, base_url=ops_base_url, retries=3, job_timeout=200, debug=False, initial_retry_time=1):

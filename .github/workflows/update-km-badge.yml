@@ -13,12 +13,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
 
     steps:
+    - name: Generate App Token
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ vars.RELEASE_APP_ID }}
+        private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
     - uses: actions/checkout@v6
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+        token: ${{ steps.app-token.outputs.token }}
 
     - name: Set up Python
       uses: actions/setup-python@v6
@@ -108,41 +115,23 @@ jobs:
         # Update last updated date - only updates when km values change
         sed -i "s|<!--LAST_UPDATED-->.*<!--/LAST_UPDATED-->|<!--LAST_UPDATED-->${CURRENT_DATE}<!--/LAST_UPDATED-->|g" README.md
     
-    - name: Create PR if changed
+    - name: Commit and push to main
       if: steps.check.outputs.needs_update == 'true'
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        ARCTIC_OLD: ${{ steps.current.outputs.arctic }}
-        ARCTIC_NEW: ${{ steps.calc.outputs.arctic }}
-        ANTARCTIC_OLD: ${{ steps.current.outputs.antarctic }}
-        ANTARCTIC_NEW: ${{ steps.calc.outputs.antarctic }}
+        GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         TOTAL_OLD: ${{ steps.current.outputs.total }}
         TOTAL_NEW: ${{ steps.calc.outputs.total }}
       run: |
-        git config --global user.name 'github-actions[bot]'
-        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        git config --local user.name "englacial-release-bot"
+        git config --local user.email "englacial-release-bot@users.noreply.github.com"
 
-        # Create a unique branch name
-        BRANCH_NAME="update-flight-badges-$(date +%Y%m%d-%H%M%S)"
-        git checkout -b "$BRANCH_NAME"
+        # Configure git to use the app token for authentication
+        git remote set-url origin https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}.git
 
-        # Commit changes
+        # Pull latest in case main moved during the run
+        git pull --rebase origin main
+
         git add README.md
         git commit -m "Flight line coverage increased from: ${TOTAL_OLD} km → ${TOTAL_NEW} km"
-
-        # Push the branch
-        git push -u origin "$BRANCH_NAME"
-
-        # Create PR (manual merge required)
-        gh pr create \
-          --title "Flight line coverage increased from: ${TOTAL_OLD} km → ${TOTAL_NEW} km" \
-          --body "Automated badge update from workflow.
-
-        **Flight distance changes:**
-        - Arctic: ${ARCTIC_OLD} km → ${ARCTIC_NEW} km
-        - Antarctic: ${ANTARCTIC_OLD} km → ${ANTARCTIC_NEW} km
-        - Total: ${TOTAL_OLD} km → ${TOTAL_NEW} km
-
-        🤖 Generated with GitHub Actions" \
-          --base main \
-          --head "$BRANCH_NAME"
+        git push origin main
+        echo "✅ Badges updated and pushed to main"

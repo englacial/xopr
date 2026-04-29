@@ -256,3 +256,202 @@ def test_pickle_roundtrip():
             opr2 = pickle.loads(data)
             assert opr2._duckdb_client is None
             assert opr2.stac_parquet_href == opr.stac_parquet_href
+
+
+# ---------------------------------------------------------------------------
+# load_bed_picks
+# ---------------------------------------------------------------------------
+
+
+def _fake_layers(n=10, lat0=-75.0, lon0=-60.0):
+    """Build a minimal {layer_name: xr.Dataset} dict matching get_layers' shape."""
+    import numpy as np
+    import xarray as xr
+
+    slow_time = np.arange(n)
+    lats = np.linspace(lat0, lat0 - 0.1, n)
+    lons = np.linspace(lon0, lon0 + 0.1, n)
+
+    surface = xr.Dataset(
+        {
+            'twtt': ('slow_time', np.full(n, 1e-6)),
+            'elev': ('slow_time', np.full(n, 500.0)),
+            'lat': ('slow_time', lats),
+            'lon': ('slow_time', lons),
+        },
+        coords={'slow_time': slow_time},
+    )
+    bottom = xr.Dataset(
+        {
+            'twtt': ('slow_time', np.full(n, 5e-5)),
+            'lat': ('slow_time', lats),
+            'lon': ('slow_time', lons),
+        },
+        coords={'slow_time': slow_time},
+    )
+    return {'standard:surface': surface, 'standard:bottom': bottom}
+
+
+REAL_CATALOG_URL = (
+    "https://data.source.coop/englacial/xopr/catalog/"
+    "hemisphere=south/provider=cresis/collection=2009_Antarctica_DC8/stac.parquet"
+)
+
+
+@pytest.fixture(scope='session')
+def real_stac_gdf(tmp_path_factory):
+    """Real 2009_Antarctica_DC8 catalog from source.coop, downloaded once
+    per pytest session and cached in a session tmp dir.
+
+    Returns the first 2 frames of the catalog. Two is enough to exercise
+    schema + multi-frame iteration; we slice to keep the fake-layers loop
+    cheap. Uses a real catalog (not a hand-rolled fake) so the test bench
+    stays honest about column names — schema drift between the catalog
+    and library code surfaces immediately rather than at notebook-build
+    time in CI.
+    """
+    import geopandas as gpd
+    import requests
+
+    cache = tmp_path_factory.mktemp('xopr_test_catalog') / 'stac.parquet'
+    if not cache.exists():
+        resp = requests.get(REAL_CATALOG_URL, timeout=60)
+        resp.raise_for_status()
+        cache.write_bytes(resp.content)
+    return gpd.read_parquet(cache).head(2).reset_index(drop=True)
+
+
+def _make_opr_with_mocked_layers():
+    """OPRConnection with sync skipped and get_layers patched to a fake."""
+    with patch('xopr.opr_access.sync_opr_catalogs'):
+        with patch('xopr.opr_access.get_opr_catalog_path', return_value=OPR_CATALOG_S3_GLOB):
+            opr = xopr.OPRConnection()
+    opr.get_layers = lambda *a, **kw: _fake_layers()
+    return opr
+
+
+@pytest.mark.slow
+def test_load_bed_picks_geodataframe(real_stac_gdf):
+    """Bulk form: full GeoDataFrame of frames returns picks for every frame."""
+    opr = _make_opr_with_mocked_layers()
+    picks = opr.load_bed_picks(real_stac_gdf, target_crs='EPSG:3031', show_progress=False)
+
+    expected_cols = {'geometry', 'wgs84', 'twtt', 'slow_time', 'id', 'collection',
+                     'opr:date', 'opr:segment', 'opr:frame', 'frame', 'segment_path'}
+    assert expected_cols.issubset(set(picks.columns))
+    assert len(picks) == len(real_stac_gdf) * 10  # N frames × 10 fake picks
+    assert picks.crs.to_string() == 'EPSG:3031'
+    assert set(picks['id'].unique()) == set(real_stac_gdf['id'])
+
+
+@pytest.mark.slow
+def test_load_bed_picks_series(real_stac_gdf):
+    """Single-row Series returns picks for that frame only."""
+    opr = _make_opr_with_mocked_layers()
+    one_row = real_stac_gdf.iloc[0]
+    picks = opr.load_bed_picks(one_row, show_progress=False)
+
+    assert len(picks) == 10
+    assert (picks['id'] == real_stac_gdf['id'].iloc[0]).all()
+    assert picks.crs.to_string() == 'EPSG:4326'  # no target_crs
+
+
+def test_load_bed_picks_dict():
+    """STAC-item-style dict input — exercises the nested-properties path."""
+    opr = _make_opr_with_mocked_layers()
+    item_dict = {
+        'id': 'Data_20091020_05_001',
+        'collection': '2009_Antarctica_DC8',
+        'properties': {'opr:date': '20091020', 'opr:segment': 5, 'opr:frame': 1},
+        'assets': {},
+    }
+    picks = opr.load_bed_picks(item_dict, show_progress=False)
+    assert len(picks) == 10
+    assert (picks['opr:frame'] == 1).all()
+
+
+def test_load_bed_picks_pystac_item_like():
+    """pystac.Item-like object (anything with .to_dict() returning a STAC dict)."""
+    class FakeItem:
+        def to_dict(self):
+            return {
+                'id': 'Data_20091020_05_001',
+                'collection': '2009_Antarctica_DC8',
+                'properties': {'opr:date': '20091020', 'opr:segment': 5, 'opr:frame': 1},
+                'assets': {},
+            }
+
+    opr = _make_opr_with_mocked_layers()
+    picks = opr.load_bed_picks(FakeItem(), show_progress=False)
+    assert len(picks) == 10
+
+
+@pytest.mark.slow
+def test_load_bed_picks_keep_mbox(real_stac_gdf):
+    """keep_mbox=True attaches the source frame's opr:mbox to every pick."""
+    opr = _make_opr_with_mocked_layers()
+    picks = opr.load_bed_picks(real_stac_gdf, keep_mbox=True, show_progress=False)
+
+    assert 'opr:mbox' in picks.columns
+    # Every pick from a given frame should carry that frame's exact mbox
+    for _, frame_row in real_stac_gdf.iterrows():
+        f_picks = picks[picks['id'] == frame_row['id']]
+        expected = list(frame_row['opr:mbox'])
+        assert all(list(m) == expected for m in f_picks['opr:mbox'])
+
+
+@pytest.mark.slow
+def test_load_bed_picks_empty_when_no_layers(real_stac_gdf):
+    """When get_layers always returns None, the result is empty but well-formed."""
+    with patch('xopr.opr_access.sync_opr_catalogs'):
+        with patch('xopr.opr_access.get_opr_catalog_path', return_value=OPR_CATALOG_S3_GLOB):
+            opr = xopr.OPRConnection()
+    opr.get_layers = lambda *a, **kw: None
+
+    picks = opr.load_bed_picks(real_stac_gdf, show_progress=False)
+    assert len(picks) == 0
+    assert 'wgs84' in picks.columns
+    assert 'segment_path' in picks.columns
+
+
+def test_load_bed_picks_invalid_input():
+    """Unsupported input types raise TypeError."""
+    opr = _make_opr_with_mocked_layers()
+    with pytest.raises(TypeError, match="frames must be"):
+        opr.load_bed_picks(42, show_progress=False)
+
+
+@pytest.mark.slow
+def test_load_bed_picks_disambiguate_compatibility(real_stac_gdf):
+    """Output of load_bed_picks is a drop-in layer_gdf for disambiguate_matches.
+
+    Regression guard: previously the schema only carried ``opr:frame``, but
+    disambiguate_matches reads ``frame`` (the legacy layer-parquet column),
+    causing a KeyError mid-build. Using the real catalog (which already has
+    ``opr:mbox``) means a schema drift in either dataset surfaces here
+    rather than in CI's notebook execution.
+    """
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    from xopr.bedmap.morton_match import disambiguate_matches, match_bedmap_to_frames
+
+    opr = _make_opr_with_mocked_layers()
+    picks = opr.load_bed_picks(real_stac_gdf, target_crs='EPSG:3031', show_progress=False)
+
+    # Both column names must be present and identical
+    assert 'frame' in picks.columns, "missing legacy 'frame' alias"
+    assert 'opr:frame' in picks.columns, "missing STAC 'opr:frame'"
+    assert (picks['frame'] == picks['opr:frame']).all()
+
+    # Two arbitrary points anywhere — disambiguate_matches must not raise
+    # on load_bed_picks output regardless of whether they actually match.
+    bedmap = gpd.GeoDataFrame(
+        {'value': [100, 200], 'trajectory_id': ['0', '1']},
+        geometry=[Point(-67.5, -76.0), Point(-62.5, -78.0)],
+        crs='EPSG:4326',
+    )
+    result = match_bedmap_to_frames(real_stac_gdf, bedmap)
+    disambig = disambiguate_matches(result, picks, real_stac_gdf, group_size=5)
+    assert 'assigned_frame' in disambig.columns
+    assert 'nearest_distance_m' in disambig.columns

@@ -21,6 +21,7 @@ project:
     - file: design.md
     - file: map.md
     - file: bedmap.md
+    - file: comparing_picks.md
     - title: API Docs
       url: /xopr/api/xopr.html
     - title: Notebooks
@@ -28,13 +29,15 @@ project:
         - file: notebooks/demo_notebook.ipynb
         - file: notebooks/search_and_scaling.ipynb
         - file: notebooks/reading_params.ipynb
-        - file: notebooks/crossovers.ipynb
         - file: notebooks/bed_picks.ipynb
+        - file: notebooks/crossovers.ipynb
+        - file: notebooks/bedmachine_comparison.ipynb
+        - file: notebooks/bedmap_match.ipynb
+        - file: notebooks/xopr_atl06_crossovers.ipynb
         - file: notebooks/qc_demo.ipynb
         - file: notebooks/nonstandard_data_products.ipynb
         - file: notebooks/repicking.ipynb
-        - file: notebooks/xopr_atl06_crossovers.ipynb
-    
+
 site:
   template: book-theme
   options:

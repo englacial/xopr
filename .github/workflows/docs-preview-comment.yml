@@ -24,7 +24,7 @@ jobs:
     steps:
     - name: Check comment and get PR info
       id: check
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       with:
         script: |
           const comment = context.payload.comment.body;
@@ -147,7 +147,7 @@ jobs:
         echo "surge_url=https://$SURGE_DOMAIN/xopr/" >> $GITHUB_OUTPUT
     
     - name: Update comment with result
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       with:
         script: |
           const prNumber = ${{ needs.check-comment.outputs.pr_number }};

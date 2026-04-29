@@ -26,9 +26,12 @@ EPSG:3031 (Antarctic Polar Stereographic): https://epsg.io/3031
 """
 
 import geopandas as gpd
+import numpy as np
 import shapely
 import shapely.ops
+import xarray as xr
 from pyproj import Transformer
+from scipy.stats import binned_statistic_2d
 
 
 def get_antarctic_regions(
@@ -255,11 +258,11 @@ def _get_regions(
                 simplify_tolerance = 0
             elif area_km2 < 100000:
                 print(f"Area is {area_km2:.1f} km^2, automatically applying 100m simplification tolerance")
-                print(f"To disable simplification, set simplify_tolerance=0")
+                print("To disable simplification, set simplify_tolerance=0")
                 simplify_tolerance = 100
             else:
                 print(f"Area is {area_km2:.1f} km^2, automatically applying 1km simplification tolerance")
-                print(f"To disable simplification, set simplify_tolerance=0")
+                print("To disable simplification, set simplify_tolerance=0")
                 simplify_tolerance = 1000
 
         if simplify_tolerance and (simplify_tolerance > 0):
@@ -355,3 +358,82 @@ def project_geojson(geometry, source_crs="EPSG:4326", target_crs=None):
     transformer = Transformer.from_crs(source_crs, target_crs, always_xy=True)
     projected_geometry = shapely.ops.transform(transformer.transform, geometry)
     return projected_geometry
+
+
+def grid_points(gdf, column, spacing, aggregations=('median', 'std', 'count'),
+                bounds=None):
+    """
+    Block-aggregate point values onto a regular grid.
+
+    Bins the points in ``gdf`` into square cells of side ``spacing`` (in
+    the GeoDataFrame's CRS units) and computes one or more aggregation
+    statistics per cell. Cells with no points are left as NaN.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        Point geometries with a numeric column to aggregate. Must have
+        a projected (non-geographic) CRS — pass through :meth:`to_crs`
+        first if necessary.
+    column : str
+        Name of the column in ``gdf`` to aggregate.
+    spacing : float
+        Cell size in CRS units (e.g. metres for ``EPSG:3031``).
+    aggregations : sequence of str or callable, default ('median', 'std', 'count')
+        Statistics to compute. Strings are passed through to
+        :func:`scipy.stats.binned_statistic_2d` and must be one of
+        ``{'mean', 'median', 'count', 'sum', 'min', 'max', 'std'}``.
+        Callables receive a 1-D array of values for one cell and must
+        return a scalar.
+    bounds : tuple of float, optional
+        ``(x_min, y_min, x_max, y_max)`` in CRS units. If None, derived
+        from the point cloud's extent.
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset with coordinates ``x``, ``y`` and one variable per
+        aggregation, named ``f"{column}_{agg}"``.
+
+    Examples
+    --------
+    >>> picks = opr.load_bed_picks(frames, target_crs='EPSG:3031')
+    >>> grid = grid_points(picks, column='wgs84', spacing=5000)
+    >>> grid['wgs84_median']
+    """
+    if gdf.crs is None:
+        raise ValueError("gdf must have a CRS set")
+    if gdf.crs.is_geographic:
+        raise ValueError(
+            f"gdf has a geographic CRS ({gdf.crs}); reproject to a projected "
+            f"CRS (e.g. EPSG:3031) before gridding"
+        )
+    if column not in gdf.columns:
+        raise KeyError(f"column {column!r} not in gdf")
+
+    x = gdf.geometry.x.values
+    y = gdf.geometry.y.values
+    vals = np.asarray(gdf[column].values, dtype=float)
+
+    if bounds is None:
+        x_min, x_max = float(x.min()), float(x.max())
+        y_min, y_max = float(y.min()), float(y.max())
+    else:
+        x_min, y_min, x_max, y_max = (float(v) for v in bounds)
+
+    x_edges = np.arange(x_min, x_max + spacing, spacing)
+    y_edges = np.arange(y_min, y_max + spacing, spacing)
+
+    data_vars = {}
+    for agg in aggregations:
+        agg_name = agg if isinstance(agg, str) else getattr(agg, '__name__', 'agg')
+        stat, _, _, _ = binned_statistic_2d(
+            x, y, vals, statistic=agg, bins=[x_edges, y_edges],
+        )
+        # binned_statistic_2d returns shape (nx-1, ny-1); transpose so the
+        # natural xarray order is (y, x).
+        data_vars[f"{column}_{agg_name}"] = (('y', 'x'), stat.T)
+
+    x_centres = 0.5 * (x_edges[:-1] + x_edges[1:])
+    y_centres = 0.5 * (y_edges[:-1] + y_edges[1:])
+    return xr.Dataset(data_vars, coords={'x': x_centres, 'y': y_centres})

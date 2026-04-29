@@ -1,7 +1,21 @@
-"""Morton geometry index computation for STAC items and collections."""
+"""Morton geometry index computation for STAC items and collections.
+
+Defines the two index primitives stored on xopr STAC objects:
+
+- ``opr:mbox`` — 4 variable-resolution morton cells per item (see
+  :func:`compute_mbox`).
+- ``opr:mpolygon`` — 12 variable-resolution morton cells per collection
+  (see :func:`compute_mpolygon_from_items`).
+
+Plus :func:`mbox_to_polygons` for materializing the cells back into
+shapely Polygons (e.g. for visualization or exact intersection tests).
+"""
 
 import numpy as np
 from mortie import geo2mort, geo_morton_polygon, morton_polygon_from_array
+from mortie.tools import mort2polygon
+from shapely import make_valid
+from shapely.geometry import Polygon
 
 
 def _extract_coords(geometry):
@@ -91,3 +105,43 @@ def compute_mpolygon_from_items(items, order=18):
     merged = np.concatenate(all_morton)
     cells = morton_polygon_from_array(merged, n_cells=12)
     return _pad_cells(cells, 12)
+
+
+def mbox_to_polygons(mbox, step=32):
+    """Materialize an ``opr:mbox`` (or ``opr:mpolygon``) as shapely Polygons in EPSG:4326.
+
+    Each morton cell is reconstructed via :func:`mortie.tools.mort2polygon`,
+    which returns a list of ``(lat, lon)`` vertices traced along the cell
+    boundary. Polygons are returned in WGS84 ``(lon, lat)`` order. To
+    project them, wrap in a ``GeoSeries`` and call ``.to_crs(...)``.
+
+    Parameters
+    ----------
+    mbox : iterable of int
+        Morton cell characteristics (typically 4 cells for ``opr:mbox``,
+        12 for ``opr:mpolygon``). Duplicates are preserved — the result
+        has one polygon per input integer.
+    step : int, default 32
+        Per-side sampling for :func:`mortie.tools.mort2polygon`. Higher
+        values give smoother boundaries at higher cost.
+
+    Returns
+    -------
+    list of shapely.geometry.Polygon
+        One polygon per input cell, in input order, in EPSG:4326.
+
+    Examples
+    --------
+    >>> polys = mbox_to_polygons(item['opr:mbox'])
+    >>> import geopandas as gpd
+    >>> gpd.GeoSeries(polys, crs='EPSG:4326').to_crs('EPSG:3031')
+    """
+    polys = []
+    for cell in mbox:
+        verts = mort2polygon(int(cell), step=step)  # [[lat, lon], ...]
+        arr = np.asarray(verts)
+        poly = Polygon(zip(arr[:, 1], arr[:, 0]))  # (lon, lat)
+        if not poly.is_valid:
+            poly = make_valid(poly)
+        polys.append(poly)
+    return polys

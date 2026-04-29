@@ -7,11 +7,12 @@ Sends a rich formatted message to Slack via webhook.
 import json
 import os
 import sys
-import pandas as pd
-from pathlib import Path
-from datetime import datetime, timedelta
-import urllib.request
 import urllib.parse
+import urllib.request
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import pandas as pd
 
 
 def format_number(num):
@@ -37,70 +38,70 @@ def generate_slack_report(data_dir='/tmp/traffic-data', webhook_url=None):
     data_dir = Path(data_dir)
     parquet_file = data_dir / 'traffic_history.parquet'
     metadata_file = data_dir / 'metadata.json'
-    
+
     if not parquet_file.exists():
         print("❌ No data to report")
         return False
-    
+
     print("📊 Generating weekly Slack report...")
-    
+
     # Load data
     df = pd.read_parquet(parquet_file)
     with open(metadata_file, 'r') as f:
         metadata = json.load(f)
-    
+
     # Get last 7 days for weekly report
     today = df['date'].max()
     week_ago = today - timedelta(days=7)
     two_weeks_ago = today - timedelta(days=14)
-    
+
     this_week = df[(df['date'] > week_ago) & (df['date'] <= today)]
     last_week = df[(df['date'] > two_weeks_ago) & (df['date'] <= week_ago)]
-    
+
     if len(this_week) == 0:
         print("⚠️  No data for this week")
         return False
-    
+
     # Calculate metrics
     clones_total = this_week['clones_total'].sum()
     clones_unique = this_week['clones_unique'].sum()
     views_total = this_week['views_total'].sum()
     views_unique = this_week['views_unique'].sum()
-    
+
     # Week-over-week changes
     clones_trend, clones_change = "🆕", 0
     views_trend, views_change = "🆕", 0
-    
+
     if len(last_week) > 0:
         clones_prev = last_week['clones_total'].sum()
         views_prev = last_week['views_total'].sum()
         clones_trend, clones_change = calculate_trend(clones_total, clones_prev)
         views_trend, views_change = calculate_trend(views_total, views_prev)
-    
+
     # Best day this week
     best_day = this_week.loc[this_week['clones_total'].idxmax()] if len(this_week) > 0 else None
-    
+
     # Parse top paths and referrers from most recent day with data
     latest = this_week.iloc[-1] if len(this_week) > 0 else None
     top_paths = []
     top_referrers = []
-    
+
     if latest is not None:
         try:
             paths_data = json.loads(latest['top_paths']) if latest['top_paths'] else []
             top_paths = paths_data[:3] if paths_data else []
-        except:
+        except Exception:
             pass
-        
+
         try:
             refs_data = json.loads(latest['top_referrers']) if latest['top_referrers'] else []
             top_referrers = refs_data[:3] if refs_data else []
-        except:
+        except Exception:
             pass
-    
+
     # Get repository name from environment or use default
     repo_name = os.environ.get('GITHUB_REPOSITORY', 'Repository')
-    
+
     # Build Slack message blocks
     blocks = [
         {
@@ -137,11 +138,11 @@ def generate_slack_report(data_dir='/tmp/traffic-data', webhook_url=None):
             ]
         }
     ]
-    
+
     # Add week-over-week changes if we have previous week data
     if len(last_week) > 0 and best_day is not None:
         change_fields = []
-        
+
         # Week-over-week changes
         wow_text = "*Week-over-week*\n"
         if clones_change != 0:
@@ -152,24 +153,24 @@ def generate_slack_report(data_dir='/tmp/traffic-data', webhook_url=None):
             "type": "mrkdwn",
             "text": wow_text.strip()
         })
-        
+
         # Best day
         change_fields.append({
             "type": "mrkdwn",
             "text": f"*Best day*\n{best_day['date'].strftime('%A')}\n`{best_day['clones_total']}` clones, `{best_day['views_total']}` views"
         })
-        
+
         blocks.append({
             "type": "section",
             "fields": change_fields
         })
-    
+
     # Add top content if available
     if top_paths or top_referrers:
         blocks.append({"type": "divider"})
-        
+
         content_fields = []
-        
+
         if top_paths:
             paths_text = "*Top Pages*\n"
             for i, path in enumerate(top_paths, 1):
@@ -182,7 +183,7 @@ def generate_slack_report(data_dir='/tmp/traffic-data', webhook_url=None):
                 "type": "mrkdwn",
                 "text": paths_text.strip()
             })
-        
+
         if top_referrers:
             refs_text = "*Top Referrers*\n"
             for i, ref in enumerate(top_referrers, 1):
@@ -197,17 +198,17 @@ def generate_slack_report(data_dir='/tmp/traffic-data', webhook_url=None):
                 "type": "mrkdwn",
                 "text": refs_text.strip()
             })
-        
+
         if content_fields:
             blocks.append({
                 "type": "section",
                 "fields": content_fields
             })
-    
+
     # Add daily breakdown as a compact chart
     if len(this_week) > 1:
         blocks.append({"type": "divider"})
-        
+
         daily_text = "*Daily Breakdown*\n```\n"
         for _, row in this_week.iterrows():
             day = row['date'].strftime('%a')
@@ -215,7 +216,7 @@ def generate_slack_report(data_dir='/tmp/traffic-data', webhook_url=None):
             clone_bar = '█' * min(int(row['clones_total'] / max(this_week['clones_total'].max(), 1) * 10), 10)
             daily_text += f"{day}: {clone_bar} {row['clones_total']}c/{row['views_total']}v\n"
         daily_text += "```"
-        
+
         blocks.append({
             "type": "section",
             "text": {
@@ -223,7 +224,7 @@ def generate_slack_report(data_dir='/tmp/traffic-data', webhook_url=None):
                 "text": daily_text
             }
         })
-    
+
     # Add footer with metadata
     blocks.extend([
         {
@@ -239,26 +240,26 @@ def generate_slack_report(data_dir='/tmp/traffic-data', webhook_url=None):
             ]
         }
     ])
-    
+
     # Prepare payload
     payload = {
         "text": f"Weekly GitHub Traffic Report: {format_number(clones_total)} clones, {format_number(views_total)} views",
         "blocks": blocks
     }
-    
+
     # Send to Slack if webhook URL is provided
     if not webhook_url:
         webhook_url = os.environ.get('SLACK_WEBHOOK_URL')
-    
+
     if webhook_url:
-        print(f"📤 Sending to Slack webhook...")
-        
+        print("📤 Sending to Slack webhook...")
+
         req = urllib.request.Request(
             webhook_url,
             data=json.dumps(payload).encode('utf-8'),
             headers={'Content-Type': 'application/json'}
         )
-        
+
         try:
             with urllib.request.urlopen(req) as response:
                 if response.status == 200:
@@ -273,7 +274,7 @@ def generate_slack_report(data_dir='/tmp/traffic-data', webhook_url=None):
             try:
                 error_body = e.read().decode('utf-8')
                 print(f"   Response: {error_body}")
-            except:
+            except Exception:
                 pass
             return False
         except Exception as e:
@@ -289,7 +290,7 @@ def generate_slack_report(data_dir='/tmp/traffic-data', webhook_url=None):
 if __name__ == '__main__':
     data_dir = sys.argv[1] if len(sys.argv) > 1 else '/tmp/traffic-data'
     webhook_url = sys.argv[2] if len(sys.argv) > 2 else None
-    
+
     try:
         success = generate_slack_report(data_dir, webhook_url)
         sys.exit(0 if success else 1)

@@ -52,7 +52,7 @@ def dereference_h5value(value, h5file, make_array=True):
         if make_array:
             try:
                 return np.squeeze(np.array(v))
-            except:
+            except Exception:
                 return v
         else:
             return v

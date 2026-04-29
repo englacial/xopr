@@ -104,7 +104,7 @@ def summarize_attrs(attrs) -> str:
         if isinstance(v, dict):
             attr_id = "attrs-" + str(uuid.uuid4())
 
-            attrs_dl += f"<div class='xr-attr-item'>"
+            attrs_dl += "<div class='xr-attr-item'>"
             attrs_dl += f"<input id='{attr_id}' class='xr-attr-in' type='checkbox'>"
             attrs_dl += f"<label class='xr-attr-nested' for='{attr_id}'>{escape(str(k))} : "
             attrs_dl += f"<span>({len(v)})</span></label>"

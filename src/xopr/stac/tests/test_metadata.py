@@ -418,10 +418,8 @@ class TestCollectUniformMetadata:
             ['sci:doi', 'sci:citation', 'sar:center_frequency', 'sar:bandwidth']
         )
 
-        # Should not have scientific extension due to non-uniform DOIs
-        sci_ext = 'https://stac-extensions.github.io/scientific/v1.0.0/schema.json'
-        # Note: SAR extension might still be present, but not SCI for DOI reasons
-
+        # Should not have scientific extension due to non-uniform DOIs.
+        # SAR extension might still be present, but not SCI for DOI reasons.
         # Extra fields should not have DOI (multiple unique values)
         assert 'sci:doi' not in extra_fields
 
@@ -567,6 +565,7 @@ class TestFrequencyFallback:
     def test_fallback_warning_only_when_verbose(self, caplog):
         """Test that fallback warning is only logged when verbose=true."""
         import logging
+
         from omegaconf import OmegaConf
 
         # Create dataset without wfs params
@@ -733,6 +732,7 @@ class TestSciMetadataFallback:
     def test_sci_fallback_warning_only_when_verbose(self, caplog):
         """Test that fallback warning is only logged when verbose=true."""
         import logging
+
         from omegaconf import OmegaConf
 
         # Create dataset without sci metadata

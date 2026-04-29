@@ -84,7 +84,7 @@ class TestEnsureBedmapCatalogs:
                 with patch('xopr.stac_cache._download_file') as mock_download:
                     mock_download.return_value = True
 
-                    result = ensure_bedmap_catalogs()
+                    ensure_bedmap_catalogs()
 
                     # Should have called download for each file
                     assert mock_download.call_count == len(BEDMAP_CATALOG_FILES)
