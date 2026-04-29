@@ -292,34 +292,33 @@ def _fake_layers(n=10, lat0=-75.0, lon0=-60.0):
     return {'standard:surface': surface, 'standard:bottom': bottom}
 
 
-def _fake_frames_gdf():
-    """Two-frame GeoDataFrame in the query_frames shape (nested 'properties')."""
-    import geopandas as gpd
-    from shapely.geometry import LineString
+REAL_CATALOG_URL = (
+    "https://data.source.coop/englacial/xopr/catalog/"
+    "hemisphere=south/provider=cresis/collection=2009_Antarctica_DC8/stac.parquet"
+)
 
-    rows = [
-        {
-            'id': 'Data_20091020_05_001',
-            'collection': '2009_Antarctica_DC8',
-            'geometry': LineString([(-60.0, -75.0), (-59.9, -75.1)]),
-            'properties': {
-                'opr:date': '20091020', 'opr:segment': 5, 'opr:frame': 1,
-                'opr:mbox': [10, 20, 30, 40],
-            },
-            'assets': {},
-        },
-        {
-            'id': 'Data_20091020_05_002',
-            'collection': '2009_Antarctica_DC8',
-            'geometry': LineString([(-59.8, -75.2), (-59.7, -75.3)]),
-            'properties': {
-                'opr:date': '20091020', 'opr:segment': 5, 'opr:frame': 2,
-                'opr:mbox': [50, 60, 70, 80],
-            },
-            'assets': {},
-        },
-    ]
-    return gpd.GeoDataFrame(rows, geometry='geometry', crs='EPSG:4326').set_index('id', drop=False)
+
+@pytest.fixture(scope='session')
+def real_stac_gdf(tmp_path_factory):
+    """Real 2009_Antarctica_DC8 catalog from source.coop, downloaded once
+    per pytest session and cached in a session tmp dir.
+
+    Returns the first 2 frames of the catalog. Two is enough to exercise
+    schema + multi-frame iteration; we slice to keep the fake-layers loop
+    cheap. Uses a real catalog (not a hand-rolled fake) so the test bench
+    stays honest about column names — schema drift between the catalog
+    and library code surfaces immediately rather than at notebook-build
+    time in CI.
+    """
+    import geopandas as gpd
+    import requests
+
+    cache = tmp_path_factory.mktemp('xopr_test_catalog') / 'stac.parquet'
+    if not cache.exists():
+        resp = requests.get(REAL_CATALOG_URL, timeout=60)
+        resp.raise_for_status()
+        cache.write_bytes(resp.content)
+    return gpd.read_parquet(cache).head(2).reset_index(drop=True)
 
 
 def _make_opr_with_mocked_layers():
@@ -331,35 +330,34 @@ def _make_opr_with_mocked_layers():
     return opr
 
 
-def test_load_bed_picks_geodataframe():
+@pytest.mark.slow
+def test_load_bed_picks_geodataframe(real_stac_gdf):
     """Bulk form: full GeoDataFrame of frames returns picks for every frame."""
     opr = _make_opr_with_mocked_layers()
-    frames = _fake_frames_gdf()
-    picks = opr.load_bed_picks(frames, target_crs='EPSG:3031', show_progress=False)
+    picks = opr.load_bed_picks(real_stac_gdf, target_crs='EPSG:3031', show_progress=False)
 
     expected_cols = {'geometry', 'wgs84', 'twtt', 'slow_time', 'id', 'collection',
-                     'opr:date', 'opr:segment', 'opr:frame', 'segment_path'}
+                     'opr:date', 'opr:segment', 'opr:frame', 'frame', 'segment_path'}
     assert expected_cols.issubset(set(picks.columns))
-    assert len(picks) == 20  # 2 frames × 10 picks
+    assert len(picks) == len(real_stac_gdf) * 10  # N frames × 10 fake picks
     assert picks.crs.to_string() == 'EPSG:3031'
-    assert set(picks['id'].unique()) == {'Data_20091020_05_001', 'Data_20091020_05_002'}
-    assert (picks['segment_path'] == '20091020_05').all()
+    assert set(picks['id'].unique()) == set(real_stac_gdf['id'])
 
 
-def test_load_bed_picks_series():
+@pytest.mark.slow
+def test_load_bed_picks_series(real_stac_gdf):
     """Single-row Series returns picks for that frame only."""
     opr = _make_opr_with_mocked_layers()
-    frames = _fake_frames_gdf()
-    one_row = frames.iloc[0]
+    one_row = real_stac_gdf.iloc[0]
     picks = opr.load_bed_picks(one_row, show_progress=False)
 
     assert len(picks) == 10
-    assert (picks['id'] == 'Data_20091020_05_001').all()
+    assert (picks['id'] == real_stac_gdf['id'].iloc[0]).all()
     assert picks.crs.to_string() == 'EPSG:4326'  # no target_crs
 
 
 def test_load_bed_picks_dict():
-    """STAC-item-style dict input."""
+    """STAC-item-style dict input — exercises the nested-properties path."""
     opr = _make_opr_with_mocked_layers()
     item_dict = {
         'id': 'Data_20091020_05_001',
@@ -388,25 +386,29 @@ def test_load_bed_picks_pystac_item_like():
     assert len(picks) == 10
 
 
-def test_load_bed_picks_keep_mbox():
+@pytest.mark.slow
+def test_load_bed_picks_keep_mbox(real_stac_gdf):
     """keep_mbox=True attaches the source frame's opr:mbox to every pick."""
     opr = _make_opr_with_mocked_layers()
-    frames = _fake_frames_gdf()
-    picks = opr.load_bed_picks(frames, keep_mbox=True, show_progress=False)
+    picks = opr.load_bed_picks(real_stac_gdf, keep_mbox=True, show_progress=False)
 
     assert 'opr:mbox' in picks.columns
-    f1 = picks[picks['id'] == 'Data_20091020_05_001']
-    assert all(m == [10, 20, 30, 40] for m in f1['opr:mbox'])
+    # Every pick from a given frame should carry that frame's exact mbox
+    for _, frame_row in real_stac_gdf.iterrows():
+        f_picks = picks[picks['id'] == frame_row['id']]
+        expected = list(frame_row['opr:mbox'])
+        assert all(list(m) == expected for m in f_picks['opr:mbox'])
 
 
-def test_load_bed_picks_empty_when_no_layers():
+@pytest.mark.slow
+def test_load_bed_picks_empty_when_no_layers(real_stac_gdf):
     """When get_layers always returns None, the result is empty but well-formed."""
     with patch('xopr.opr_access.sync_opr_catalogs'):
         with patch('xopr.opr_access.get_opr_catalog_path', return_value=OPR_CATALOG_S3_GLOB):
             opr = xopr.OPRConnection()
     opr.get_layers = lambda *a, **kw: None
 
-    picks = opr.load_bed_picks(_fake_frames_gdf(), show_progress=False)
+    picks = opr.load_bed_picks(real_stac_gdf, show_progress=False)
     assert len(picks) == 0
     assert 'wgs84' in picks.columns
     assert 'segment_path' in picks.columns
@@ -417,3 +419,39 @@ def test_load_bed_picks_invalid_input():
     opr = _make_opr_with_mocked_layers()
     with pytest.raises(TypeError, match="frames must be"):
         opr.load_bed_picks(42, show_progress=False)
+
+
+@pytest.mark.slow
+def test_load_bed_picks_disambiguate_compatibility(real_stac_gdf):
+    """Output of load_bed_picks is a drop-in layer_gdf for disambiguate_matches.
+
+    Regression guard: previously the schema only carried ``opr:frame``, but
+    disambiguate_matches reads ``frame`` (the legacy layer-parquet column),
+    causing a KeyError mid-build. Using the real catalog (which already has
+    ``opr:mbox``) means a schema drift in either dataset surfaces here
+    rather than in CI's notebook execution.
+    """
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    from xopr.bedmap.morton_match import disambiguate_matches, match_bedmap_to_frames
+
+    opr = _make_opr_with_mocked_layers()
+    picks = opr.load_bed_picks(real_stac_gdf, target_crs='EPSG:3031', show_progress=False)
+
+    # Both column names must be present and identical
+    assert 'frame' in picks.columns, "missing legacy 'frame' alias"
+    assert 'opr:frame' in picks.columns, "missing STAC 'opr:frame'"
+    assert (picks['frame'] == picks['opr:frame']).all()
+
+    # Two arbitrary points anywhere — disambiguate_matches must not raise
+    # on load_bed_picks output regardless of whether they actually match.
+    bedmap = gpd.GeoDataFrame(
+        {'value': [100, 200], 'trajectory_id': ['0', '1']},
+        geometry=[Point(-67.5, -76.0), Point(-62.5, -78.0)],
+        crs='EPSG:4326',
+    )
+    result = match_bedmap_to_frames(real_stac_gdf, bedmap)
+    disambig = disambiguate_matches(result, picks, real_stac_gdf, group_size=5)
+    assert 'assigned_frame' in disambig.columns
+    assert 'nearest_distance_m' in disambig.columns

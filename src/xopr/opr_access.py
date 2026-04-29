@@ -1150,6 +1150,10 @@ class OPRConnection:
             - ``id`` — STAC item id of the source frame
             - ``collection`` — STAC collection name
             - ``opr:date``, ``opr:segment``, ``opr:frame`` — frame identifiers
+              (STAC convention)
+            - ``frame`` — same value as ``opr:frame``, kept under the bare name
+              so the GeoDataFrame can be passed straight into
+              :func:`xopr.bedmap.morton_match.disambiguate_matches`
             - ``segment_path`` — ``f"{opr:date}_{opr:segment:02d}"``
             - ``opr:mbox`` — only if ``keep_mbox=True``
 
@@ -1209,6 +1213,9 @@ class OPRConnection:
                 'opr:date': opr_date,
                 'opr:segment': opr_segment,
                 'opr:frame': opr_frame,
+                # 'frame' is an unprefixed alias matching the legacy layer-parquet
+                # schema consumed by xopr.bedmap.morton_match.disambiguate_matches.
+                'frame': opr_frame,
                 'segment_path': segment_path,
                 '_lon': ds['lon'].values,
                 '_lat': ds['lat'].values,
@@ -1219,7 +1226,7 @@ class OPRConnection:
 
         if not pick_dfs:
             cols = [vertical, 'twtt', 'slow_time', 'id', 'collection',
-                    'opr:date', 'opr:segment', 'opr:frame', 'segment_path']
+                    'opr:date', 'opr:segment', 'opr:frame', 'frame', 'segment_path']
             if keep_mbox:
                 cols.append('opr:mbox')
             empty = pd.DataFrame({c: pd.Series(dtype='object') for c in cols})
