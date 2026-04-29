@@ -32,6 +32,7 @@ project:
         - file: notebooks/bed_picks.ipynb
         - file: notebooks/crossovers.ipynb
         - file: notebooks/bedmachine_comparison.ipynb
+        - file: notebooks/bedmap_match.ipynb
         - file: notebooks/xopr_atl06_crossovers.ipynb
         - file: notebooks/qc_demo.ipynb
         - file: notebooks/nonstandard_data_products.ipynb
