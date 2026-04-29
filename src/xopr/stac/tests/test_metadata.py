@@ -565,6 +565,7 @@ class TestFrequencyFallback:
     def test_fallback_warning_only_when_verbose(self, caplog):
         """Test that fallback warning is only logged when verbose=true."""
         import logging
+
         from omegaconf import OmegaConf
 
         # Create dataset without wfs params
@@ -731,6 +732,7 @@ class TestSciMetadataFallback:
     def test_sci_fallback_warning_only_when_verbose(self, caplog):
         """Test that fallback warning is only logged when verbose=true."""
         import logging
+
         from omegaconf import OmegaConf
 
         # Create dataset without sci metadata

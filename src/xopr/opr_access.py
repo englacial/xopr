@@ -66,11 +66,11 @@ from rustac import DuckdbClient
 
 from . import opr_tools, ops_api
 from .cf_units import apply_cf_compliant_attrs
-from .radar_util import layer_twtt_to_range
 from .matlab_attribute_utils import (
     decode_hdf5_matlab_variable,
     extract_legacy_mat_attributes,
 )
+from .radar_util import layer_twtt_to_range
 from .stac_cache import get_opr_catalog_path, sync_opr_catalogs
 
 
