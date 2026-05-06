@@ -9,6 +9,7 @@ Run using:
 """
 
 import asyncio
+import glob
 import io
 import os
 import re
@@ -424,6 +425,46 @@ async def main(  # noqa: PLR0912, PLR0914, PLR0915
         # break  # TODO work on more years
 
 
+def overlap_stats():
+    """
+    Calculate classified/unclassified BedMap points and report statistics.
+
+    Report shows percentage (%) and counts (n=) on a campaign by campaign basis, and as
+    a total in the end. Classification is determined by whether the 'opr_id' column in
+    the Geopackage (*.gpkg) file is NaN or not.
+    """
+    print("Name | Classified % | Unclassified % ")
+    print("--|--|--")
+
+    total_classified: int = 0
+    total_unclassified: int = 0
+    for gpkg in sorted(glob.glob("data/*.gpkg")):
+        df_points: gpd.GeoDataFrame = gpd.read_file(
+            filename=gpkg, columns=["opr_id"], read_geometry=False, use_arrow=True
+        )
+
+        total: int = len(df_points.opr_id)
+        classified: int = len(df_points.opr_id.dropna())
+        classified_percent: float = classified / total * 100
+        unclassified: int = total - classified
+        unclassified_percent: float = unclassified / total * 100
+
+        print(
+            f"{os.path.basename(gpkg)} | "
+            f"{classified_percent:.2f}% (n={classified}) | "
+            f"{unclassified_percent:.2f}% (n={unclassified}) "
+        )
+        total_classified += classified
+        total_unclassified += unclassified
+
+    total_total: int = total_classified + total_unclassified
+    print(
+        f"Total "
+        f"| {100 * total_classified / total_total:.2f}% (n={total_classified}) "
+        f"| {100 * total_unclassified / total_total:.2f}% (n={total_unclassified})"
+    )
+
+
 # %%
 if __name__ == "__main__":
     print("------------------ Loading simplified Bedmap geometries ------------------")
@@ -434,5 +475,8 @@ if __name__ == "__main__":
 
     print("---------------------------- Starting main loop ---------------------------")
     asyncio.run(main=main(gdf_stac=gdf_stac, store=store, prefixes=prefixes))
+
+    print("---------------------------- Report statistics ----------------------------")
+    overlap_stats()
 
     print("Done!")
