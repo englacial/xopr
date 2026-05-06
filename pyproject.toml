@@ -30,6 +30,7 @@ dependencies = [
     "pyarrow",
     "platformdirs",
     "pyOpenSSL<24",  # gsutil incompatible with pyOpenSSL 24+ (removed crypto.sign)
+    "obstore>=0.8.2",
 ]
 
 [project.optional-dependencies]
