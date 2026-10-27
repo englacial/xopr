@@ -48,10 +48,16 @@ xopr.radar_util : Processing functions for radar data and layers
 ops_api : Interface to the OPS database API
 """
 
+import getpass
+import netrc
+import os
 import re
+import sys
 import warnings
 from typing import Union
+from urllib.parse import urlparse
 
+import aiohttp
 import antimeridian
 import fsspec
 import geopandas as gpd
@@ -72,13 +78,81 @@ from .matlab_attribute_utils import (
 )
 from .stac_cache import get_opr_catalog_path, sync_opr_catalogs
 
+AUTH_STRATEGIES = ("environment", "netrc", "interactive")
+
+
+def _is_interactive():
+    """True if a user can answer a prompt (terminal or Jupyter kernel)."""
+    return (sys.stdin is not None and sys.stdin.isatty()) or 'ipykernel' in sys.modules
+
+
+def _resolve_auth(auth, host):
+    """
+    Resolve HTTP basic auth credentials for ``host``.
+
+    Parameters
+    ----------
+    auth : str, tuple, or None
+        ``(username, password)`` tuple, ``None`` (no auth), or a strategy:
+        ``"environment"`` (``OPR_USERNAME``/``OPR_PASSWORD``), ``"netrc"``
+        (``~/.netrc`` or ``$NETRC``), ``"interactive"`` (prompt), or ``"all"``
+        (try each in that order, skipping the prompt if non-interactive).
+    host : str
+        Hostname to look up in netrc and to show in the prompt.
+
+    Returns
+    -------
+    tuple or None
+        ``(username, password)``, or None if ``auth="all"`` found nothing.
+    """
+    if auth is None or isinstance(auth, tuple):
+        return auth
+    if auth == "all":
+        for strategy in AUTH_STRATEGIES:
+            if strategy == "interactive" and not _is_interactive():
+                continue
+            creds = _resolve_auth_strategy(strategy, host)
+            if creds:
+                return creds
+        warnings.warn(f"No credentials found for {host} (set OPR_USERNAME/OPR_PASSWORD, "
+                      f"add a ~/.netrc entry, or pass auth=(username, password)). "
+                      f"Continuing without authentication.", UserWarning, stacklevel=3)
+        return None
+    if auth not in AUTH_STRATEGIES:
+        raise ValueError(f"Unknown auth strategy {auth!r}; expected one of "
+                         f"{('all',) + AUTH_STRATEGIES}, a (username, password) tuple, or None")
+    creds = _resolve_auth_strategy(auth, host)
+    if not creds:
+        raise ValueError(f"auth={auth!r} did not provide credentials for {host}")
+    return creds
+
+
+def _resolve_auth_strategy(strategy, host):
+    """Return ``(username, password)`` from a single strategy, or None."""
+    if strategy == "environment":
+        user, password = os.environ.get("OPR_USERNAME"), os.environ.get("OPR_PASSWORD")
+    elif strategy == "netrc":
+        try:
+            entry = netrc.netrc(os.environ.get("NETRC")).authenticators(host)
+        except (FileNotFoundError, netrc.NetrcParseError):
+            entry = None
+        user, password = (entry[0], entry[2]) if entry else (None, None)
+    else:
+        try:
+            print(f"Enter credentials for {host}")
+            user, password = input("Username: "), getpass.getpass("Password: ")
+        except (EOFError, NotImplementedError, OSError):  # e.g. kernel without stdin
+            user, password = None, None
+    return (user, password) if user and password else None
+
 
 class OPRConnection:
     def __init__(self,
                  collection_url: str = "https://data.cresis.ku.edu/data/",
                  cache_dir: str = None,
                  stac_parquet_href: str = None,
-                 sync_catalogs: bool = True):
+                 sync_catalogs: bool = True,
+                 auth: Union[str, tuple, None] = "all"):
         """
         Initialize connection to OPR data archive.
 
@@ -96,8 +170,18 @@ class OPRConnection:
             If True (default), sync OPR STAC catalogs to a local cache
             before resolving the catalog path.  Uses ETag-based change
             detection so repeated calls are cheap (single HTTP request).
+        auth : str, tuple, or None, optional
+            HTTP basic auth for the ``collection_url`` host. Either a
+            ``(username, password)`` tuple, None to disable, or a strategy:
+            ``"environment"`` (``OPR_USERNAME``/``OPR_PASSWORD`` env vars),
+            ``"netrc"`` (``~/.netrc`` or ``$NETRC``), ``"interactive"``
+            (prompt), or ``"all"`` (default; try each in that order, skipping
+            the prompt in non-interactive sessions and warning if nothing is
+            found). Credentials are only sent to the ``collection_url`` host.
         """
         self.collection_url = collection_url
+        self.auth_host = urlparse(collection_url).hostname
+        self._auth = _resolve_auth(auth, self.auth_host)
         self.cache_dir = cache_dir
         self._user_set_href = stac_parquet_href is not None
         if sync_catalogs and not self._user_set_href:
@@ -137,10 +221,22 @@ class OPRConnection:
         """
         if not url.startswith(('http://', 'https://', 's3://', 'gs://')):
             return url
-        if self.fsspec_url_prefix:
-            return fsspec.open_local(f"{self.fsspec_url_prefix}{url}", filecache=self.fsspec_cache_kwargs)
-        else:
-            return fsspec.open_local(f"simplecache::{url}", simplecache=self.fsspec_cache_kwargs)
+        protocol = url.split('://')[0]
+        cache = self.fsspec_url_prefix.rstrip(':') or 'simplecache'
+        kwargs = {cache: self.fsspec_cache_kwargs}
+        if self._auth and urlparse(url).hostname == self.auth_host:
+            kwargs[protocol] = {'client_kwargs': {'auth': aiohttp.BasicAuth(*self._auth)}}
+        try:
+            return fsspec.open_local(f"{cache}::{url}", **kwargs)
+        except aiohttp.ClientResponseError as e:
+            if e.status not in (401, 403):
+                raise
+            reason = ("the provided credentials were rejected" if self._auth else
+                      "no credentials were provided")
+            raise PermissionError(
+                f"HTTP {e.status} accessing {url}: {reason}. Set OPR_USERNAME/OPR_PASSWORD, "
+                f"add a ~/.netrc entry for {urlparse(url).hostname}, or pass "
+                f"OPRConnection(auth=(username, password)).") from e
 
     def _extract_segment_info(self, segment):
         """Extract collection, segment_path, and frame from Dataset or dict."""

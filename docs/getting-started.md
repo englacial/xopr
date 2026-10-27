@@ -24,6 +24,16 @@ uv add xopr[docs] # or xopr[all] for absolutely everything
 
 You do **not** need to be working on the CReSIS servers to use `xOPR`. Unlike the rest of the OPR tooling, `xOPR` relies only on public data access, so you can run it wherever you like.
 
+## Data access credentials
+
+Due to an increase in bot activity, the OPR data site (`data.cresis.ku.edu`) currently requires HTTP basic authentication. OPR publishes shared credentials that can be found at [https://data.cresis.ku.edu/](https://data.cresis.ku.edu/). `OPRConnection` looks for credentials in this order:
+
+1. The `OPR_USERNAME` and `OPR_PASSWORD` environment variables
+2. A `machine data.cresis.ku.edu` entry in `~/.netrc` (or the file named by `$NETRC`)
+3. An interactive prompt (skipped in non-interactive sessions)
+
+You can also pass credentials directly with `xopr.OPRConnection(auth=("username", "password"))`, or pick one method with `auth="environment"`, `auth="netrc"` or `auth="interactive"`. If no credentials are found, `xOPR` warns and continues. Reads from the data site then raise a `PermissionError` that explains how to provide credentials.
+
 ## Working on a StratusGeo/CryoCloud/any JupyterHub
 
 Working on StratusGeo (formerly known as [CryoCloud](https://cryointhecloud.com/)) is a great option is you're an existing CryoCloud user.

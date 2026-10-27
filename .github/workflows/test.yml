@@ -10,6 +10,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      OPR_USERNAME: ${{ secrets.OPR_USERNAME }}
+      OPR_PASSWORD: ${{ secrets.OPR_PASSWORD }}
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
