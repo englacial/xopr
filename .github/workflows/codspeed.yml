@@ -11,6 +11,10 @@ permissions:
   pull-requests: write
   contents: read
 
+env:
+  OPR_USERNAME: ${{ secrets.OPR_USERNAME }}
+  OPR_PASSWORD: ${{ secrets.OPR_PASSWORD }}
+
 jobs:
   bench-walltime:
     name: "Benchmarks (walltime, macro runner)"

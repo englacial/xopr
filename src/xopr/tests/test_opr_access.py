@@ -7,6 +7,7 @@ from rustac import DuckdbClient
 
 import xopr
 import xopr.geometry
+from xopr.opr_access import _resolve_auth
 from xopr.stac_cache import OPR_CATALOG_S3_GLOB
 
 # Configuration flag for OPS database failure handling in tests.
@@ -256,3 +257,76 @@ def test_pickle_roundtrip():
             opr2 = pickle.loads(data)
             assert opr2._duckdb_client is None
             assert opr2.stac_parquet_href == opr.stac_parquet_href
+
+
+
+# --- Authentication ---
+
+AUTH_HOST = "data.cresis.ku.edu"
+LAYER_URL = (f"https://{AUTH_HOST}/data/rds/2017_Antarctica_BaslerJKB/"
+             "CSARP_layer/20180105_03/Data_20180105_03_003.mat")
+
+
+@pytest.fixture
+def no_creds(monkeypatch, tmp_path):
+    """Clear credential env vars and point NETRC at an empty file."""
+    monkeypatch.delenv("OPR_USERNAME", raising=False)
+    monkeypatch.delenv("OPR_PASSWORD", raising=False)
+    netrc_path = tmp_path / "netrc"
+    netrc_path.write_text("")
+    monkeypatch.setenv("NETRC", str(netrc_path))
+    return netrc_path
+
+
+def test_auth_strategies(no_creds, monkeypatch):
+    """Each strategy resolves credentials; environment takes precedence under 'all'."""
+    assert _resolve_auth(("a", "b"), AUTH_HOST) == ("a", "b")
+    assert _resolve_auth(None, AUTH_HOST) is None
+
+    no_creds.write_text(f"machine {AUTH_HOST} login nu password np\n")
+    assert _resolve_auth("netrc", AUTH_HOST) == ("nu", "np")
+
+    monkeypatch.setenv("OPR_USERNAME", "eu")
+    monkeypatch.setenv("OPR_PASSWORD", "ep")
+    assert _resolve_auth("environment", AUTH_HOST) == ("eu", "ep")
+    assert _resolve_auth("all", AUTH_HOST) == ("eu", "ep")
+
+    with patch("builtins.input", return_value="iu"), \
+            patch("getpass.getpass", return_value="ip"):
+        assert _resolve_auth("interactive", AUTH_HOST) == ("iu", "ip")
+
+
+def test_auth_errors(no_creds):
+    with pytest.raises(ValueError, match="Unknown auth strategy"):
+        _resolve_auth("bogus", AUTH_HOST)
+    for strategy in ("environment", "netrc"):
+        with pytest.raises(ValueError, match="did not provide credentials"):
+            _resolve_auth(strategy, AUTH_HOST)
+
+
+def test_auth_all_noninteractive_warns(no_creds):
+    with patch("xopr.opr_access._is_interactive", return_value=False), \
+            patch("builtins.input") as mock_input:
+        with pytest.warns(UserWarning, match="No credentials found"):
+            assert _resolve_auth("all", AUTH_HOST) is None
+        mock_input.assert_not_called()
+
+
+def test_auth_only_sent_to_collection_host():
+    with patch('xopr.opr_access.sync_opr_catalogs'):
+        opr = xopr.OPRConnection(auth=("u", "p"))
+    with patch("xopr.opr_access.fsspec.open_local") as mock_open:
+        opr._open_file(LAYER_URL)
+        assert "https" in mock_open.call_args.kwargs
+        opr._open_file("https://example.com/file.mat")
+        assert "https" not in mock_open.call_args.kwargs
+
+
+def test_auth_failure_raises_permission_error():
+    with patch('xopr.opr_access.sync_opr_catalogs'):
+        opr = xopr.OPRConnection(auth=None)
+        with pytest.raises(PermissionError, match="no credentials were provided"):
+            opr._open_file(LAYER_URL)
+        opr = xopr.OPRConnection(auth=("wrong", "wrong"))
+        with pytest.raises(PermissionError, match="credentials were rejected"):
+            opr._open_file(LAYER_URL)

@@ -20,6 +20,8 @@ concurrency:
 
 env:
   BASE_URL: /xopr
+  OPR_USERNAME: ${{ secrets.OPR_USERNAME }}
+  OPR_PASSWORD: ${{ secrets.OPR_PASSWORD }}
 
 jobs:
   test:
