@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- `OPRConnection(auth=...)`: HTTP basic auth for the OPR data site, using the same strategies as earthaccess (`"environment"` via `OPR_USERNAME`/`OPR_PASSWORD`, `"netrc"`, `"interactive"`, `"all"`) or an explicit `(username, password)` tuple. Credentials are only sent to the `collection_url` host, and a 401/403 raises a `PermissionError` explaining how to authenticate
+- `OPRConnection(auth=...)`: HTTP basic auth for the OPR data site, using the same strategies as earthaccess (`"environment"` via `OPR_USERNAME`/`OPR_PASSWORD`, `"netrc"`, `"interactive"`, `"all"`) or an explicit `(username, password)` tuple. Credentials are only sent to the `collection_url` host, and a 401/403 raises a `PermissionError` explaining how to authenticate ([#101](https://github.com/englacial/xopr/pull/NNN)) by @thomasteisberg
 
 ## [0.6.0] - 2026-09-07
 
