@@ -3,7 +3,7 @@
 -e .
 affine==3.0.1
     # via rasterio
-aiobotocore==3.9.0
+aiobotocore==3.10.0
     # via
     #   s3fs
     #   stac-asset
@@ -11,7 +11,7 @@ aiofiles==25.1.0
     # via stac-asset
 aiohappyeyeballs==2.7.1
     # via aiohttp
-aiohttp==3.14.3
+aiohttp==3.14.5
     # via
     #   aiobotocore
     #   aiohttp-oauth2-client
@@ -34,8 +34,6 @@ annotated-types==0.8.0
     # via pydantic
 antimeridian==0.4.9
     # via xopr
-antlr4-python3-runtime==4.9.3
-    # via omegaconf
 anyio==4.15.1
     # via
     #   httpx
@@ -51,7 +49,7 @@ arrow==1.4.0
     # via isoduration
 asttokens==3.0.2
     # via stack-data
-async-lru==2.3.0
+async-lru==2.4.0
     # via jupyterlab
 attr==0.3.2
     # via stac-fastapi-geoparquet
@@ -73,7 +71,7 @@ beautifulsoup4==4.15.0
     # via nbconvert
 bleach==6.4.0
     # via nbconvert
-bokeh==3.9.2
+bokeh==3.9.2 ; python_full_version < '3.12'
     # via
     #   geoviews
     #   holoviews
@@ -81,22 +79,30 @@ bokeh==3.9.2
     #   jupyter-bokeh
     #   panel
     #   panel-material-ui
-boto3==1.43.56
+bokeh==3.10.1 ; python_full_version >= '3.12'
+    # via
+    #   geoviews
+    #   holoviews
+    #   hvplot
+    #   jupyter-bokeh
+    #   panel
+    #   panel-material-ui
+boto3==1.43.117
     # via coiled
-botocore==1.43.56
+botocore==1.43.117
     # via
     #   aiobotocore
     #   boto3
     #   s3transfer
 bounded-pool-executor==0.0.3
     # via pqdm
-brotli==1.2.0
+brotli==1.2.1
     # via brotli-asgi
-brotli-asgi==1.6.0
+brotli-asgi==1.7.0
     # via stac-fastapi-api
-cartopy==0.25.0
+cartopy==0.26.0
     # via geoviews
-certifi==2026.7.22
+certifi==2026.10.23
     # via
     #   coiled
     #   httpcore
@@ -111,7 +117,7 @@ cffi==2.1.1
     #   cryptography
     #   pynacl
     #   pyzmq
-charset-normalizer==3.5.1
+charset-normalizer==3.5.2
     # via requests
 ciso8601==2.3.3
     # via stac-geoparquet
@@ -136,7 +142,7 @@ cloudpickle==3.1.2
     #   dask
     #   distributed
     #   joblib
-coiled==1.135.3
+coiled==1.135.6
     # via xopr
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
@@ -151,11 +157,13 @@ comm==0.2.3
     # via
     #   ipykernel
     #   ipywidgets
-contourpy==1.3.3
+contourpy==1.3.3 ; python_full_version < '3.12'
     # via
     #   bokeh
     #   matplotlib
-coverage==7.16.0
+contourpy==1.4.0 ; python_full_version >= '3.12'
+    # via matplotlib
+coverage==7.17.0
     # via pytest-cov
 cryptography==41.0.7
     # via
@@ -169,29 +177,31 @@ dask==2026.8.0
     #   distributed
     #   verde
     #   xopr
-debugpy==1.8.21
+debugpy==1.8.22
     # via ipykernel
 decorator==5.3.1
     # via fabric
 defusedxml==0.7.1
     # via nbconvert
-deprecated==1.3.1
+deprecated==1.3.1 ; python_full_version < '3.12'
+    # via fabric
+deprecated==3.0.0 ; python_full_version >= '3.12'
     # via fabric
 distributed==2026.8.0
     # via
     #   coiled
     #   dask
-duckdb==1.5.5
+duckdb==2.0.0
     # via xopr
 earthaccess==0.17.0 ; python_full_version < '3.12'
     # via xopr
 earthaccess==0.19.0 ; python_full_version >= '3.12'
     # via xopr
-executing==2.2.1
+executing==2.3.0
     # via stack-data
 fabric==3.2.3
     # via coiled
-fastapi==0.141.1
+fastapi==0.162.0
     # via
     #   stac-fastapi-geoparquet
     #   stac-fastapi-types
@@ -199,33 +209,35 @@ fastjsonschema==2.22.2
     # via
     #   nbformat
     #   stac-valid
-filelock==3.32.5
+filelock==4.2.4
     # via coiled
-flake8==7.3.0
+flake8==7.5.0
     # via xopr
-fonttools==4.64.0
+fonttools==4.68.0
     # via matplotlib
-fqdn==1.5.1
+fqdn==1.6.0
     # via jsonschema
 frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-fsspec==2026.7.0
+fsspec==2026.9.0
     # via
     #   dask
     #   earthaccess
     #   s3fs
     #   xopr
-geojson-pydantic==2.1.2
+geojson-pydantic==2.2.0
     # via
     #   stac-fastapi-geoparquet
     #   stac-pydantic
-geopandas==1.1.4
+geopandas==1.2.0
     # via
     #   stac-geoparquet
     #   xopr
-geoviews==1.15.1
+geoviews==1.15.1 ; python_full_version < '3.12'
+    # via xopr
+geoviews==1.16.0 ; python_full_version >= '3.12'
     # via xopr
 gilknocker==0.4.2
     # via coiled
@@ -235,7 +247,7 @@ h11==0.16.0
     #   uvicorn
 h2==4.4.1
     # via httpx
-h5netcdf==1.8.1
+h5netcdf==1.8.2
     # via xopr
 h5py==3.16.0
     # via
@@ -261,25 +273,25 @@ hvplot==0.12.2
     # via xopr
 hyperframe==6.1.0
     # via h2
-idna==3.19
+idna==3.20
     # via
     #   anyio
     #   httpx
     #   jsonschema
     #   requests
     #   yarl
-importlib-metadata==9.0.1 ; python_full_version < '3.12'
+importlib-metadata==10.1.0 ; python_full_version < '3.12'
     # via dask
 importlib-resources==7.1.0
     # via earthaccess
-iniconfig==2.3.0
+iniconfig==2.3.1
     # via pytest
 invoke==2.2.1
     # via
     #   coiled
     #   fabric
     #   paramiko
-ipykernel==7.3.0
+ipykernel==7.4.0
     # via
     #   jupyter
     #   jupyter-console
@@ -301,7 +313,7 @@ iso8601==2.1.0
     # via stac-fastapi-types
 isoduration==20.11.0
     # via jsonschema
-jedi==0.20.0
+jedi==0.20.1
     # via ipython
 jinja2==3.1.6
     # via
@@ -320,11 +332,11 @@ jmespath==1.1.0
     #   coiled
 joblib==1.6.0
     # via scikit-learn
-json5==0.15.0
+json5==0.17.3
     # via jupyterlab-server
 jsondiff==2.2.1
     # via coiled
-jsonpointer==3.1.1
+jsonpointer==3.6
     # via jsonschema
 jsonschema==4.26.0
     # via
@@ -339,7 +351,7 @@ jupyter==1.1.1
     # via xopr
 jupyter-bokeh==4.1.0
     # via xopr
-jupyter-builder==1.2.3
+jupyter-builder==1.2.4
     # via
     #   jupyterlab
     #   notebook
@@ -366,7 +378,7 @@ jupyter-events==0.12.1
     # via jupyter-server
 jupyter-lsp==2.3.1
     # via jupyterlab
-jupyter-server==2.21.0
+jupyter-server==2.21.1
     # via
     #   jupyter-lsp
     #   jupyterlab
@@ -375,14 +387,14 @@ jupyter-server==2.21.0
     #   notebook-shim
 jupyter-server-terminals==0.5.4
     # via jupyter-server
-jupyterlab==4.6.3
+jupyterlab==4.6.4
     # via
     #   jupyter
     #   notebook
     #   xopr
 jupyterlab-pygments==0.3.0
     # via nbconvert
-jupyterlab-server==2.28.0
+jupyterlab-server==2.28.1
     # via
     #   jupyterlab
     #   notebook
@@ -398,7 +410,7 @@ locket==1.0.0
     # via
     #   distributed
     #   partd
-markdown==3.10.3
+markdown==3.11.2
     # via panel
 markdown-it-py==4.2.0
     # via
@@ -407,12 +419,12 @@ markdown-it-py==4.2.0
     #   rich
 markdown2==2.5.5
     # via pdoc
-markupsafe==3.0.3
+markupsafe==3.0.4
     # via
     #   jinja2
     #   nbconvert
     #   pdoc
-matplotlib==3.11.1
+matplotlib==3.11.2
     # via
     #   cartopy
     #   xopr
@@ -426,22 +438,22 @@ mdit-py-plugins==0.6.1
     # via panel
 mdurl==0.1.2
     # via markdown-it-py
-mistune==3.3.4
+mistune==3.4.0
     # via nbconvert
 mortie==0.8.0
     # via xopr
-msgpack==1.2.2
+msgpack==1.2.4
     # via distributed
-multidict==6.7.1
+multidict==7.2.1
     # via
     #   aiobotocore
     #   aiohttp
     #   yarl
 multimethod==2.1
     # via earthaccess
-mystmd==1.10.1
+mystmd==1.12.0
     # via xopr
-narwhals==2.25.0
+narwhals==2.28.0
     # via
     #   bokeh
     #   holoviews
@@ -449,7 +461,7 @@ narwhals==2.25.0
     #   scikit-learn
 nbclient==0.11.0
     # via nbconvert
-nbconvert==7.17.1
+nbconvert==7.17.2
     # via
     #   jupyter
     #   jupyter-server
@@ -458,13 +470,13 @@ nbformat==5.11.1
     #   jupyter-server
     #   nbclient
     #   nbconvert
-nest-asyncio2==1.7.2
+nest-asyncio2==1.7.4
     # via ipykernel
 nh3==0.3.7
     # via panel
-nodeenv==1.9.1
+nodeenv==1.11.0
     # via mystmd
-notebook==7.6.2
+notebook==7.6.3
     # via jupyter
 notebook-shim==0.2.4
     # via
@@ -495,7 +507,7 @@ numpy==2.4.6 ; python_full_version < '3.12'
     #   verde
     #   xarray
     #   xopr
-numpy==2.5.3 ; python_full_version >= '3.12'
+numpy==2.5.4 ; python_full_version >= '3.12'
     # via
     #   antimeridian
     #   bokeh
@@ -520,11 +532,13 @@ numpy==2.5.3 ; python_full_version >= '3.12'
     #   verde
     #   xarray
     #   xopr
-obstore==0.11.1
+obstore==0.12.1
     # via stac-fastapi-geoparquet
-omegaconf==2.3.1
+omegaconf==2.4.0
     # via xopr
-orjson==3.12.0
+opentelemetry-api==1.45.1
+    # via fastapi
+orjson==3.13.0
     # via stac-geoparquet
 overrides==7.7.0 ; python_full_version < '3.12'
     # via jupyter-server
@@ -556,7 +570,7 @@ packaging==26.3
     #   stac-geoparquet
     #   wheel
     #   xarray
-pandas==3.0.5
+pandas==3.1.0
     # via
     #   geopandas
     #   holoviews
@@ -567,13 +581,19 @@ pandas==3.0.5
     #   xarray
 pandocfilters==1.5.1
     # via nbconvert
-panel==1.9.4
+panel==1.9.4 ; python_full_version < '3.12'
     # via
     #   geoviews
     #   holoviews
     #   hvplot
     #   panel-material-ui
-panel-material-ui==0.14.2
+panel==1.10.0 ; python_full_version >= '3.12'
+    # via
+    #   geoviews
+    #   holoviews
+    #   hvplot
+    #   panel-material-ui
+panel-material-ui==0.16.6
     # via panel
 param==2.4.2
     # via
@@ -582,7 +602,7 @@ param==2.4.2
     #   hvplot
     #   panel
     #   pyviz-comms
-paramiko==5.0.0
+paramiko==5.1.0
     # via
     #   coiled
     #   fabric
@@ -594,21 +614,21 @@ pdoc==16.0.0
     # via xopr
 pexpect==4.9.0 ; sys_platform != 'emscripten' and sys_platform != 'win32'
     # via ipython
-pillow==12.3.0
+pillow==13.0.0
     # via
     #   bokeh
     #   matplotlib
-pip==26.2.1
+pip==26.2.2
     # via coiled
 pip-requirements-parser==32.0.1
     # via coiled
-platformdirs==4.2.2
+platformdirs==4.14.0
     # via
     #   jupyter-core
     #   mystmd
     #   pooch
     #   xopr
-pluggy==1.6.0
+pluggy==1.7.0
     # via
     #   pytest
     #   pytest-cov
@@ -624,31 +644,30 @@ prompt-toolkit==3.0.53
     # via
     #   ipython
     #   jupyter-console
-propcache==0.5.2
+propcache==0.5.4
     # via
     #   aiohttp
     #   yarl
 psutil==7.2.2
     # via
     #   distributed
-    #   ipykernel
     #   ipython
     #   stac-geoparquet
 ptyprocess==0.7.0 ; os_name != 'nt' or (sys_platform != 'emscripten' and sys_platform != 'win32')
     # via
     #   pexpect
     #   terminado
-pure-eval==0.2.3
+pure-eval==0.2.4
     # via stack-data
-pyarrow==25.0.1
+pyarrow==26.0.0
     # via
     #   stac-geoparquet
     #   xopr
-pycodestyle==2.14.0
+pycodestyle==2.15.0
     # via flake8
-pycparser==3.0 ; implementation_name != 'PyPy'
+pycparser==3.12 ; implementation_name != 'PyPy'
     # via cffi
-pydantic==2.13.5
+pydantic==2.14.1
     # via
     #   aiohttp-oauth2-client
     #   fastapi
@@ -656,11 +675,11 @@ pydantic==2.13.5
     #   pydantic-settings
     #   stac-fastapi-geoparquet
     #   stac-pydantic
-pydantic-core==2.46.5
+pydantic-core==2.50.1
     # via pydantic
-pydantic-settings==2.15.0
+pydantic-settings==2.16.2
     # via stac-fastapi-types
-pyflakes==3.4.0
+pyflakes==4.1.0
     # via flake8
 pygments==2.21.0
     # via
@@ -677,7 +696,7 @@ pyogrio==0.13.0
     # via geopandas
 pyopenssl==23.3.0
     # via xopr
-pyparsing==3.3.2
+pyparsing==3.3.3
     # via
     #   matplotlib
     #   pip-requirements-parser
@@ -782,7 +801,7 @@ pystac-ext-view==1.0.1
     #   pystac-ext-eo
 pystac-ext-xarray-assets==1.0.1
     # via pystac
-pytest==9.1.1
+pytest==9.2.0
     # via
     #   pytest-codspeed
     #   pytest-cov
@@ -805,7 +824,7 @@ python-dateutil==2.9.0.post0
     #   pystac-core
     #   python-cmr
     #   stac-asset
-python-dotenv==1.2.3
+python-dotenv==1.2.4
     # via pydantic-settings
 python-json-logger==4.2.0
     # via jupyter-events
@@ -813,7 +832,7 @@ pyviz-comms==3.0.6
     # via
     #   holoviews
     #   panel
-pywinpty==3.0.5 ; os_name == 'nt'
+pywinpty==3.1.2 ; os_name == 'nt'
     # via
     #   jupyter-server
     #   jupyter-server-terminals
@@ -836,7 +855,7 @@ pyzmq==27.2.0
     #   jupyter-server
 rasterio==1.4.4 ; python_full_version < '3.12'
     # via rioxarray
-rasterio==1.5.1 ; python_full_version >= '3.12'
+rasterio==1.5.2 ; python_full_version >= '3.12'
     # via rioxarray
 referencing==0.37.0
     # via
@@ -874,19 +893,19 @@ rioxarray==0.19.0 ; python_full_version < '3.12'
     # via xopr
 rioxarray==0.23.0 ; python_full_version >= '3.12'
     # via xopr
-rpds-py==2026.6.3
+rpds-py==2026.9.1
     # via
     #   jsonschema
     #   referencing
-rustac==0.9.17
+rustac==0.9.18
     # via
     #   stac-fastapi-geoparquet
     #   xopr
-s3fs==2026.7.0
+s3fs==2026.9.0
     # via earthaccess
-s3transfer==0.19.2
+s3transfer==0.19.3
     # via boto3
-scikit-learn==1.9.0
+scikit-learn==1.9.1
     # via verde
 scipy==1.17.1 ; python_full_version < '3.12'
     # via
@@ -900,7 +919,7 @@ scipy==1.18.1 ; python_full_version >= '3.12'
     #   xopr
 send2trash==2.1.0
     # via jupyter-server
-shapely==2.1.2
+shapely==2.2.0
     # via
     #   antimeridian
     #   cartopy
@@ -914,26 +933,28 @@ six==1.17.0
     #   rfc3339-validator
 sortedcontainers==2.4.0
     # via distributed
-soupsieve==2.9.2
+soupsieve==2.10 ; python_full_version < '3.11.5'
     # via beautifulsoup4
-stac-asset==0.4.7
+soupsieve==3.0.4 ; python_full_version >= '3.11.5'
+    # via beautifulsoup4
+stac-asset==0.4.8
     # via xopr
-stac-fastapi-api==6.6.0
+stac-fastapi-api==7.0.0
     # via
     #   stac-fastapi-extensions
     #   stac-fastapi-geoparquet
-stac-fastapi-extensions==6.6.0
+stac-fastapi-extensions==7.0.0
     # via stac-fastapi-geoparquet
-stac-fastapi-geoparquet==0.0.6
+stac-fastapi-geoparquet==0.0.8
     # via xopr
-stac-fastapi-types==6.6.0
+stac-fastapi-types==7.0.0
     # via
     #   stac-fastapi-api
     #   stac-fastapi-extensions
     #   stac-fastapi-geoparquet
-stac-geoparquet==0.8.2
+stac-geoparquet==0.8.3
     # via xopr
-stac-pydantic==3.6.0
+stac-pydantic==3.7.1
     # via stac-fastapi-types
 stac-valid==4.2.1
     # via stac-validator
@@ -941,20 +962,20 @@ stac-validator==4.1.2
     # via xopr
 stack-data==0.6.3
     # via ipython
-starlette==1.6.0
+starlette==1.10.0
     # via
     #   brotli-asgi
     #   fastapi
     #   stac-fastapi-types
 tblib==3.2.2
     # via distributed
-tenacity==9.1.4
+tenacity==9.2.1
     # via earthaccess
 terminado==0.18.1
     # via
     #   jupyter-server
     #   jupyter-server-terminals
-threadpoolctl==3.6.0
+threadpoolctl==3.7.0
     # via scikit-learn
 tinycss2==1.5.1
     # via bleach
@@ -962,14 +983,12 @@ tinynetrc==1.3.1
     # via earthaccess
 toml==0.10.2
     # via coiled
-tomli==2.4.1 ; python_full_version <= '3.11'
-    # via coverage
-toolz==1.1.0
+toolz==1.2.0
     # via
     #   dask
     #   distributed
     #   partd
-tornado==6.5.8
+tornado==6.6
     # via
     #   bokeh
     #   distributed
@@ -979,7 +998,7 @@ tornado==6.5.8
     #   jupyterlab
     #   notebook
     #   terminado
-tqdm==4.70.0
+tqdm==4.70.1
     # via
     #   panel
     #   pqdm
@@ -1016,10 +1035,12 @@ typing-extensions==4.16.0
     #   jupyter-client
     #   jupyterlab
     #   obstore
+    #   opentelemetry-api
     #   panel
     #   pqdm
     #   pydantic
     #   pydantic-core
+    #   pydantic-settings
     #   python-cmr
     #   referencing
     #   starlette
@@ -1029,21 +1050,21 @@ typing-inspection==0.4.4
     #   fastapi
     #   pydantic
     #   pydantic-settings
-tzdata==2026.3
+tzdata==2026.6
     # via
     #   arrow
     #   pandas
 uri-template==1.3.0
     # via jsonschema
-urllib3==2.7.0
+urllib3==2.8.0
     # via
     #   botocore
     #   requests
-uvicorn==0.52.4
+uvicorn==0.54.0
     # via stac-fastapi-geoparquet
 verde==1.9.0
     # via xopr
-wcwidth==0.8.3
+wcwidth==0.9.4
     # via prompt-toolkit
 webcolors==25.10.0
     # via jsonschema
@@ -1057,11 +1078,11 @@ wheel==0.48.0
     # via coiled
 widgetsnbextension==4.0.16
     # via ipywidgets
-wrapt==2.4.0
+wrapt==2.5.1
     # via
     #   aiobotocore
     #   deprecated
-xarray==2026.7.0
+xarray==2026.9.0
     # via
     #   rioxarray
     #   verde
@@ -1070,11 +1091,11 @@ xyzservices==2026.9.1
     # via
     #   bokeh
     #   geoviews
-yarl==1.24.5
+yarl==1.25.1
     # via
     #   aiohttp
     #   stac-asset
 zict==3.0.0
     # via distributed
-zipp==4.1.0 ; python_full_version < '3.12'
+zipp==4.1.2 ; python_full_version < '3.12'
     # via importlib-metadata

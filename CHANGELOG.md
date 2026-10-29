@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-29
+
+- Fix publish workflow ([#103](https://github.com/englacial/xopr/pull/103)) by @thomasteisberg
+- Support HTTP authentication newly required by the OPR data site ([#101](https://github.com/englacial/xopr/pull/101)) by @thomasteisberg
+
+
 - `OPRConnection(auth=...)`: HTTP basic auth for the OPR data site, using the same strategies as earthaccess (`"environment"` via `OPR_USERNAME`/`OPR_PASSWORD`, `"netrc"`, `"interactive"`, `"all"`) or an explicit `(username, password)` tuple. Credentials are only sent to the `collection_url` host, and a 401/403 raises a `PermissionError` explaining how to authenticate ([#101](https://github.com/englacial/xopr/pull/NNN)) by @thomasteisberg
 
 ## [0.6.0] - 2026-09-07
